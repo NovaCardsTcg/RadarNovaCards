@@ -41,6 +41,11 @@ ESTADO = os.path.join(AQUI, "estado.json")
 # de tiempo de ejecucion, no un limite de avisos.
 MAX_FICHAS = 10
 
+# Tope de fichas que se abren para confirmar bajadas de precio. Las bajadas de
+# verdad son pocas; si un dia salen cien es que algo va mal, y mas vale mandar
+# los avisos sin confirmar que tener la pasada media hora abriendo paginas.
+MAX_COMPROBACIONES = 12
+
 
 def ahora() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
@@ -161,12 +166,71 @@ def formatea(tipo: str, p, anterior=None, config=None) -> tuple[str, tuple[str, 
         pct = (anterior[0] - p.precio) / anterior[0] * 100
         lineas.append("<s>%.2f EUR</s>  <b>%.2f EUR</b>  (-%.0f%%)"
                       % (anterior[0], p.precio, pct))
+        if getattr(p, "sin_confirmar", False):
+            lineas.append("<i>No he podido abrir la ficha para confirmarlo.</i>")
     elif p.precio is not None:
         lineas.append("<b>%.2f EUR</b>" % p.precio)
     else:
         lineas.append("(precio sin confirmar, mira la ficha)")
 
     return "\n".join(lineas), ("Ver producto", p.url)
+
+
+def baja_bastante(antes, ahora, config: dict) -> bool:
+    """La bajada supera los dos umbrales? Se piden los dos a la vez.
+
+    Solo el porcentaje deja pasar los centimos de un producto caro; solo los
+    euros deja pasar bajadas irrelevantes en un producto barato.
+    """
+    if ahora is None or not antes or ahora >= antes:
+        return False
+    baja_eur = antes - ahora
+    return (baja_eur / antes * 100 >= config["bajada_min_pct"]
+            and baja_eur >= config["bajada_min_eur"])
+
+
+def confirma_bajadas(pendientes: list[tuple], config: dict, estado: dict) -> list[tuple]:
+    """Abre la ficha de cada bajada y comprueba que el precio es el de verdad.
+
+    El precio de la tarjeta del buscador y el de la ficha no siempre coinciden:
+    ofertas de otros vendedores que ganan y pierden la caja de compra,
+    variantes del producto, promociones que caducan. El resultado era avisar de
+    una bajada y que al pinchar apareciera el precio de siempre.
+
+    Aqui manda la ficha, que es lo que ve la persona al pinchar:
+
+      - Si la ficha no confirma la bajada, no se avisa, y ademas se corrige la
+        memoria con el precio de la ficha. Sin eso el precio malo se quedaria
+        de referencia y volveria a disparar el mismo aviso falso en bucle.
+      - Si la confirma, el aviso lleva el precio de la ficha, no el del
+        buscador, para que el mensaje y la pagina digan lo mismo.
+      - Si la ficha no se puede leer, se avisa igual pero diciendolo: mejor un
+        aviso con una reserva que perder una bajada real.
+    """
+    salida = []
+    comprobadas = 0
+    for tipo, p, ant in pendientes:
+        if tipo != "precio" or comprobadas >= MAX_COMPROBACIONES:
+            salida.append((tipo, p, ant))
+            continue
+
+        comprobadas += 1
+        real = tiendas.precio_ficha(p)
+
+        if real is None:
+            p.sin_confirmar = True
+            salida.append((tipo, p, ant))
+            continue
+
+        estado["productos"][p.clave] = [real, p.disponible]
+        if not baja_bastante(ant[0], real, config):
+            print("[%s] bajada descartada: la tarjeta decia %.2f pero la ficha "
+                  "dice %.2f (antes %.2f)" % (p.tienda, p.precio, real, ant[0]))
+            continue
+
+        p.precio = real
+        salida.append((tipo, p, ant))
+    return salida
 
 
 def compara(tienda: str, productos: list, config: dict, estado: dict,
@@ -202,12 +266,8 @@ def compara(tienda: str, productos: list, config: dict, estado: dict,
             pre_precio, pre_disp = (anterior + [None, None])[:2]
             if pre_disp is False and p.disponible is True:
                 sucesos.append(("stock", p, anterior))
-            elif (p.precio is not None and pre_precio and p.precio < pre_precio):
-                baja_eur = pre_precio - p.precio
-                baja_pct = baja_eur / pre_precio * 100
-                if (baja_pct >= config["bajada_min_pct"]
-                        and baja_eur >= config["bajada_min_eur"]):
-                    sucesos.append(("precio", p, anterior))
+            elif baja_bastante(pre_precio, p.precio, config):
+                sucesos.append(("precio", p, anterior))
 
         memoria[p.clave] = [p.precio, p.disponible]
 
@@ -350,6 +410,8 @@ def main() -> int:
     if config.get("pausado"):
         print("pausado: %d sucesos anotados sin avisar" % len(pendientes))
         pendientes = []
+
+    pendientes = confirma_bajadas(pendientes, config, estado)
 
     # Primero lo nuevo, luego el stock, luego las bajadas: si hay recorte por
     # el tope de avisos, que caiga lo menos urgente.

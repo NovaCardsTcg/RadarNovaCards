@@ -8,6 +8,8 @@ Avisa de tres cosas:
 - **NUEVO** — una referencia que no había visto nunca en esa tienda.
 - **VUELVE EL STOCK** — un producto conocido pasa de agotado a comprable.
 - **BAJA DE PRECIO** — cae respecto a la última vez (por defecto, un 5% y 1 € como mínimo).
+  Antes de avisarte se abre la ficha del producto para confirmar que el precio es
+  ese de verdad; ver la sección 6.
 
 ---
 
@@ -164,7 +166,30 @@ mismo `.bat` vale para el Programador de tareas de Windows.
 
 ---
 
-## 6. Lo que puede salir mal
+## 6. Por qué las bajadas se confirman en la ficha
+
+El precio de la tarjeta del buscador y el de la ficha del producto no siempre
+coinciden. Pasa sobre todo en Amazon: ofertas de otros vendedores que ganan y
+pierden la caja de compra, variantes del mismo producto con precios distintos,
+promociones que caducan entre que se detecta y se avisa. El resultado era recibir
+"ha bajado a 34,98" y encontrarte 69,95 al pinchar.
+
+Ahora, antes de mandar un aviso de bajada, se abre la ficha:
+
+- Si la ficha **no confirma** la bajada, no se avisa. Y además se corrige la memoria
+  con el precio de la ficha; sin eso el precio malo se quedaría de referencia y
+  dispararía el mismo aviso falso una y otra vez.
+- Si la **confirma**, el aviso lleva el precio de la ficha, no el del buscador, para
+  que el mensaje y la página digan lo mismo.
+- Si la ficha **no se puede abrir**, se avisa igual pero diciéndolo en el mensaje.
+  Mejor un aviso con una reserva que perderse una bajada real.
+
+Cuesta una petición por bajada, y las bajadas reales son pocas. El tope está en 12
+comprobaciones por pasada.
+
+---
+
+## 7. Lo que puede salir mal
 
 **Amazon corta de vez en cuando.** Devolvió 403 y 503 desde GitHub hasta que se añadió
 lo de pedir la portada primero. Aun así cuenta con cortes sueltos: el radar reintenta,
@@ -186,7 +211,7 @@ pasada escribe en la rama `estado`, y eso cuenta como actividad.
 
 ---
 
-## 7. Ficheros
+## 8. Ficheros
 
 | Fichero | Qué hace |
 |---|---|
@@ -207,7 +232,7 @@ permite que los cambios que haces por Telegram sobrevivan de una pasada a la sig
 
 ---
 
-## 8. Probarlo en local
+## 9. Probarlo en local
 
 ```bash
 pip install -r requirements.txt

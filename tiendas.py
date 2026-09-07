@@ -69,6 +69,8 @@ class Producto:
     precio: float | None = None
     disponible: bool | None = None
     imagen: str | None = None
+    # Se marca cuando no se ha podido contrastar el precio con la ficha.
+    sin_confirmar: bool = False
 
     @property
     def clave(self) -> str:
@@ -446,6 +448,69 @@ def carrefour(palabras: list[str], trozos: int = 40) -> list[Producto]:
 # --------------------------------------------------------------------------
 # Ficha: solo se pide para los productos nuevos de las fuentes tipo sitemap
 # --------------------------------------------------------------------------
+
+# Selectores del precio vigente en la ficha de producto. El de la tarjeta del
+# buscador y el de la ficha pueden no coincidir (ofertas de otros vendedores,
+# variantes del producto, promociones que caducan), y el que vale es el de la
+# ficha: es el que ve la persona cuando pincha el aviso.
+PRECIO_EN_FICHA = {
+    "amazon": ("#corePrice_feature_div span.a-offscreen",
+               ".priceToPay span.a-offscreen",
+               "#corePriceDisplay_desktop_feature_div span.a-offscreen",
+               "span.a-price span.a-offscreen"),
+    "eci": ('[data-synth="PRICE"]', ".price-sale", ".product_detail-price"),
+    "mediamarkt": ('[data-test="mms-product-price"]', '[data-test="branded-price-value"]'),
+}
+
+
+def precio_ficha(p: Producto) -> float | None:
+    """Precio actual en la ficha del producto, o None si no se puede leer.
+
+    Se usa para confirmar las bajadas antes de avisar. None significa "no he
+    podido comprobarlo", que no es lo mismo que "no ha bajado": quien llama
+    decide que hacer con la duda.
+    """
+    try:
+        s = _sesion(_PORTADAS.get(p.tienda))
+        r = _get(s, p.url)
+        sopa = BeautifulSoup(r.text, "lxml")
+
+        for sel in PRECIO_EN_FICHA.get(p.tienda, ()):
+            el = sopa.select_one(sel)
+            if el:
+                valor = _precio(el.get_text(" ", strip=True))
+                if valor:
+                    return valor
+
+        # Reserva para cualquier tienda: el precio del ld+json de Schema.org.
+        for ld in sopa.find_all("script", type="application/ld+json"):
+            try:
+                d = json.loads(ld.string or "{}")
+            except (json.JSONDecodeError, AttributeError):
+                continue
+            d = d[0] if isinstance(d, list) and d else d
+            if not isinstance(d, dict):
+                continue
+            ofertas = d.get("offers") or {}
+            ofertas = ofertas[0] if isinstance(ofertas, list) and ofertas else ofertas
+            if isinstance(ofertas, dict) and ofertas.get("price"):
+                try:
+                    return float(str(ofertas["price"]).replace(",", "."))
+                except ValueError:
+                    pass
+        return None
+    except (TiendaCaida, requests.RequestException):
+        return None
+
+
+_PORTADAS = {
+    "amazon": "https://www.amazon.es/",
+    "eci": "https://www.elcorteingles.es/",
+    "mediamarkt": "https://www.mediamarkt.es/",
+    "carrefour": "https://www.carrefour.es/",
+}
+
+
 
 def detalle(p: Producto) -> Producto:
     """Completa titulo/precio/imagen leyendo las metaetiquetas Open Graph.
