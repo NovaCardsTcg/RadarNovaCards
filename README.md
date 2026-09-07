@@ -132,11 +132,21 @@ Contra eso se probaron dos cosas, y las dos ganaron terreno:
 
 Con MediaMarkt y Carrefour ninguna de las dos basta.
 
-**Filtro temático.** Sin él, "pokemon" en Carrefour saca 981 productos que son mochilas,
-funkos, peluches, tazas y sábanas: solo 27 llevaban "cartas" en el nombre. La lista
-`tematica` de `config.json` exige que el nombre contenga algo de TCG (cartas, sobres,
-latas, ETB, displays...). Carrefour queda en 91 y GAME en 63, que además es lo que hace
-viable comprobarles el stock uno por uno.
+**Filtro temático: solo TCG.** Sin él, "pokemon" en Carrefour saca 996 productos que son
+mochilas, funkos, peluches, tazas y sábanas. Hay dos listas en `config.json`:
+
+- `tematica` — el nombre tiene que contener algo de TCG: cartas, sobre de, sobres, JCC,
+  TCG, booster, ETB, entrenador elite, blister, mazo, baraja, lata, display...
+- `excluir` — tipos de producto que no son TCG por mucho que lleven una de esas
+  palabras: despertadores, peluches, funkos, mochilas, gomas de borrar, pilas...
+
+Los dos comparan **por palabra completa**, no por trozo. Buscando subcadenas, "lata"
+casaba con "escar**lata**" (los juegos de Switch) y con "p**lata**forma" (los
+auriculares), y "sobre" casaba con la preposición: *"despertador pokemon bulbasaur
+**sobre** pokeball"*. Por eso el término es `sobre de` y no `sobre`.
+
+Resultado: Amazon 205 de 282, El Corte Inglés 8 de 10, GAME 45 de 409 y Carrefour 39 de
+996. En total 297 productos, todos TCG.
 
 **Por qué unas dan precio y otras no.** GAME pinta el buscador con JavaScript y lo
 protege con reCAPTCHA; Carrefour tapa buscador y API con Cloudflare (devuelven 403 y

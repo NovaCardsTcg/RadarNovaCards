@@ -23,6 +23,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 import time
 import traceback
@@ -137,6 +138,20 @@ def toca(tienda: str, config: dict, estado: dict) -> bool:
     return (time.time() - ultima) >= cada * 60
 
 
+def contiene(texto: str, termino: str) -> bool:
+    """Busca el termino como palabra completa, no como trozo de otra palabra.
+
+    Buscando subcadenas, "lata" casaba con "escarLATA" (los juegos de Switch) y
+    con "pLATAforma" (los auriculares), y "sobre" casaba con la preposicion:
+    "despertador pokemon bulbasaur SOBRE pokeball". Media juguetería entraba en
+    el radar por accidente.
+
+    Sirve tambien para terminos de varias palabras ("entrenador elite"), que se
+    buscan enteros y seguidos.
+    """
+    return re.search(r"\b%s\b" % re.escape(normaliza(termino)), texto) is not None
+
+
 def relevante(p, config: dict, exigir_palabra: bool) -> bool:
     """Filtra el ruido.
 
@@ -153,15 +168,15 @@ def relevante(p, config: dict, exigir_palabra: bool) -> bool:
     """
     t = normaliza(p.titulo)
     for mala in config.get("excluir", []):
-        if normaliza(mala) in t:
+        if contiene(t, mala):
             return False
 
     # Filtro tematico. Sin el, "pokemon" en Carrefour saca 981 productos que son
     # mochilas, funkos, peluches, tazas y sabanas: solo 27 llevaban "cartas" en
-    # el nombre. Con el se queda en 91, que ademas es lo que hace viable
+    # el nombre. Con el se queda en unos 60, que ademas es lo que hace viable
     # comprobarles el stock uno por uno.
     tematica = config.get("tematica") or []
-    if tematica and not any(normaliza(x) in t for x in tematica):
+    if tematica and not any(contiene(t, x) for x in tematica):
         return False
 
     if not exigir_palabra or not config.get("exigir_palabra", True):
