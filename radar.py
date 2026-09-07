@@ -245,6 +245,10 @@ def confirma_bajadas(pendientes: list[tuple], config: dict, estado: dict) -> lis
     return salida
 
 
+def primera_vez_sembrando(tienda: str, estado: dict, resembrar: bool) -> bool:
+    return not estado["sembrado"].get(tienda) or resembrar
+
+
 def registra_para_vigilar(tienda: str, productos: list, estado: dict):
     """Apunta los productos de las fuentes de sitemap para poder mirarles el stock.
 
@@ -434,6 +438,8 @@ def main() -> int:
                 if fuera:
                     print("[limpieza] %s: %d entradas de tiendas apagadas"
                           % (deposito, fuera))
+            estado["salud"] = {k: v for k, v in estado.get("salud", {}).items()
+                               if k not in apagadas}
 
     estado["pasadas"] = estado.get("pasadas", 0) + 1
     rodaje = config.get("rodaje_pasadas", 12)
@@ -475,6 +481,18 @@ def main() -> int:
         # Las tiendas de sitemap alimentan la lista de vigilancia de stock.
         if not da_precio and tienda in ("game", "carrefour"):
             registra_para_vigilar(tienda, productos, estado)
+
+        # En las fuentes de sitemap lo que llega es el catalogo entero, asi que
+        # lo que no esta es que ya no existe o ya no pasa el filtro: se puede
+        # tirar sin miedo. En los buscadores NO se hace, porque ahi cada pasada
+        # devuelve una muestra rotatoria y borrar lo que no ha salido hoy seria
+        # olvidar medio catalogo y volver a avisarlo como nuevo manana.
+        if not da_precio and not primera_vez_sembrando(tienda, estado, resembrar):
+            vivos = {p.clave for p in productos}
+            for deposito in ("productos", "vigilando"):
+                estado[deposito] = {
+                    k: v for k, v in estado.get(deposito, {}).items()
+                    if not k.startswith(tienda + ":") or k in vivos}
 
         primera = not estado["sembrado"].get(tienda) or resembrar
         sucesos = compara(tienda, productos, config, estado, en_rodaje)
