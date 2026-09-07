@@ -75,10 +75,50 @@ class Producto:
         return f"{self.tienda}:{self.pid}"
 
 
-def _sesion() -> requests.Session:
+# Pistas de que la respuesta es un muro antibot y no la pagina pedida. Sirven
+# para que el aviso de tienda caida diga QUE pasa y no solo que fallo.
+MARCADORES = {
+    "cloudflare": ("cf-browser-verification", "cf-chl", "attention required",
+                   "checking your browser"),
+    "akamai": ("akamaighost", "reference #", "access denied"),
+    "amazon-bot": ("api-services-support@amazon.com", "introduce los caracteres",
+                   "continuar comprando", "continue shopping"),
+    "generico": ("unusual traffic", "bot detected", "are you a robot"),
+}
+
+
+def _marcador(texto: str) -> str:
+    t = texto[:20000].lower()
+    for nombre, claves in MARCADORES.items():
+        if any(k in t for k in claves):
+            return nombre
+    return ""
+
+
+def _sesion(portada: str | None = None) -> requests.Session:
+    """Sesion con cabeceras de navegador y, si se pide, cookies de la portada.
+
+    Lo de la portada no es adorno. Amazon, El Corte Ingles, MediaMarkt y
+    Carrefour rechazan con 403 la peticion que entra directa a una URL de
+    busqueda sin haber pasado por la web: no hay cookie de sesion y el
+    Sec-Fetch-Site dice que vienes de ningun sitio. Pidiendo antes la portada
+    se recogen esas cookies y la busqueda ya va como navegacion interna.
+
+    Ayuda, pero no hace milagros: si el bloqueo es por reputacion de IP (que es
+    lo que le pasa a los runners de GitHub, que salen por rangos de centro de
+    datos), esto no lo arregla.
+    """
     s = requests.Session()
     s.headers.update(CABECERAS)
     s.headers["User-Agent"] = random.choice(AGENTES)
+    if portada:
+        try:
+            s.get(portada, timeout=TIMEOUT)
+            s.headers["Referer"] = portada
+            s.headers["Sec-Fetch-Site"] = "same-origin"
+            time.sleep(random.uniform(0.8, 1.8))
+        except requests.RequestException:
+            pass  # sin cookies se intenta igual
     return s
 
 
@@ -89,7 +129,8 @@ def _get(s: requests.Session, url: str, **kw) -> requests.Response:
             r = s.get(url, timeout=TIMEOUT, **kw)
             if r.status_code == 200:
                 return r
-            ultimo = "HTTP %s" % r.status_code
+            marca = _marcador(r.text)
+            ultimo = "HTTP %s%s" % (r.status_code, " [%s]" % marca if marca else "")
             # 403/429/503 suele ser antibot: cambiar de agente y esperar mas.
             if r.status_code in (403, 429, 503):
                 s.headers["User-Agent"] = random.choice(AGENTES)
@@ -129,16 +170,21 @@ def normaliza(t: str) -> str:
 # --------------------------------------------------------------------------
 
 def amazon(palabras: list[str], paginas: int = 2) -> list[Producto]:
-    s = _sesion()
+    s = _sesion("https://www.amazon.es/")
     out: dict[str, Producto] = {}
+    pista = ""
     for palabra in palabras:
         for pag in range(1, paginas + 1):
             # s=date-desc-rank es el orden "novedades": lo recien listado sale arriba.
             url = ("https://www.amazon.es/s?k=%s&s=date-desc-rank&page=%d"
                    % (quote_plus(palabra), pag))
             r = _get(s, url)
-            if "api-services-support@amazon.com" in r.text:
-                raise TiendaCaida("captcha de Amazon")
+            # Amazon casi nunca responde 403: cuando no le gustas devuelve un 200
+            # con una pagina de interstitial. Por eso hay que mirar el contenido.
+            marca = _marcador(r.text)
+            if marca:
+                raise TiendaCaida("muro antibot de Amazon [%s]" % marca)
+            pista = "200 pero sin tarjetas, %d KB" % (len(r.text) // 1024)
             sopa = BeautifulSoup(r.text, "lxml")
             tarjetas = sopa.select('div[data-component-type="s-search-result"]')
             for c in tarjetas:
@@ -162,7 +208,7 @@ def amazon(palabras: list[str], paginas: int = 2) -> list[Producto]:
                 )
             time.sleep(random.uniform(1.0, 2.5))
     if not out:
-        raise TiendaCaida("Amazon no devuelve tarjetas para ninguna palabra clave")
+        raise TiendaCaida("Amazon sin tarjetas para ninguna palabra (%s)" % pista)
     return list(out.values())
 
 
@@ -173,7 +219,7 @@ def eci(palabras: list[str], paginas: int = 2) -> list[Producto]:
     embebe en window.__MOONSHINE_STATE__. La URL de la ficha si esta en el HTML
     (atributo data-url). Se cruzan los dos por la referencia (A200971037).
     """
-    s = _sesion()
+    s = _sesion("https://www.elcorteingles.es/")
     out: dict[str, Producto] = {}
     for palabra in palabras:
         for pag in range(1, paginas + 1):
@@ -258,7 +304,7 @@ def _datalayer_eci(html: str) -> list[dict]:
 
 
 def mediamarkt(palabras: list[str], paginas: int = 2) -> list[Producto]:
-    s = _sesion()
+    s = _sesion("https://www.mediamarkt.es/")
     out: dict[str, Producto] = {}
     for palabra in palabras:
         for pag in range(1, paginas + 1):
@@ -367,7 +413,7 @@ def carrefour(palabras: list[str], trozos: int = 40) -> list[Producto]:
     Son 40 ficheros de ~1,5 MB. Por eso esta tienda corre con cadencia lenta
     (ver cada_min en config.json): barrerlos cada 10 minutos seria absurdo.
     """
-    s = _sesion()
+    s = _sesion("https://www.carrefour.es/")
     out, vistos = [], set()
     for n in range(trozos):
         url = ("https://www.carrefour.es/sitemap/non-food/products/"
