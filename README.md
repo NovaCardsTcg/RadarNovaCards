@@ -25,10 +25,16 @@ Avisa de tres cosas:
 
 ### Subirlo a GitHub
 
+El repositorio local ya está creado y con el primer commit hecho. Falta el remoto:
+
+1. En github.com → **New repository** → nombre `radar-pokemon`, **Public**, y sin
+   añadir README ni .gitignore (ya los hay).
+2. Desde esta carpeta:
+
 ```bash
-cd radar-pokemon
-git init && git add . && git commit -m "Radar Pokemon"
-gh repo create radar-pokemon --public --source=. --push
+git remote add origin https://github.com/<tu-usuario>/radar-pokemon.git
+git branch -M main
+git push -u origin main
 ```
 
 **Hazlo público.** No es capricho: en repos públicos los minutos de Actions son
