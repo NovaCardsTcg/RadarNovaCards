@@ -29,6 +29,24 @@ from urllib.parse import quote_plus
 import requests
 from bs4 import BeautifulSoup
 
+# curl_cffi imita la huella TLS/HTTP2 de un Chrome real. requests, por muy bien
+# que le pongas las cabeceras, tiene un apreton de manos SSL reconocible, y los
+# cortafuegos de tipo Akamai o Cloudflare lo puntuan como bot. Es una senal
+# distinta de la IP y suma con ella: desde casa daba igual porque la IP
+# residencial ya aprobaba, pero desde un centro de datos cada punto cuenta.
+#
+# Va con reserva a proposito: si la libreria no esta instalada, el radar
+# funciona igual con requests en vez de romperse.
+try:
+    from curl_cffi import requests as navegador
+    from curl_cffi.requests.exceptions import RequestException as _ErrorCffi
+    IMPERSONA = "chrome131"
+    ERRORES_RED = (requests.RequestException, _ErrorCffi)
+except ImportError:
+    navegador = requests
+    IMPERSONA = None
+    ERRORES_RED = (requests.RequestException,)
+
 TIMEOUT = 25
 REINTENTOS = 3
 
@@ -110,16 +128,26 @@ def _sesion(portada: str | None = None) -> requests.Session:
     lo que le pasa a los runners de GitHub, que salen por rangos de centro de
     datos), esto no lo arregla.
     """
-    s = requests.Session()
-    s.headers.update(CABECERAS)
-    s.headers["User-Agent"] = random.choice(AGENTES)
+    if IMPERSONA:
+        # Imitando a Chrome, las cabeceras de identidad (User-Agent, sec-ch-ua)
+        # las pone la libreria, coherentes con la huella TLS que manda. Ponerlas
+        # a mano seria contraproducente: un User-Agent de Windows con una huella
+        # TLS de Mac es justo la incoherencia que buscan los cortafuegos.
+        s = navegador.Session(impersonate=IMPERSONA)
+        s.headers.update({k: v for k, v in CABECERAS.items()
+                          if not k.lower().startswith(("sec-ch-ua", "user-agent"))})
+    else:
+        s = requests.Session()
+        s.headers.update(CABECERAS)
+        s.headers["User-Agent"] = random.choice(AGENTES)
+
     if portada:
         try:
             s.get(portada, timeout=TIMEOUT)
             s.headers["Referer"] = portada
             s.headers["Sec-Fetch-Site"] = "same-origin"
             time.sleep(random.uniform(0.8, 1.8))
-        except requests.RequestException:
+        except ERRORES_RED:
             pass  # sin cookies se intenta igual
     return s
 
@@ -135,10 +163,11 @@ def _get(s: requests.Session, url: str, **kw) -> requests.Response:
             ultimo = "HTTP %s%s" % (r.status_code, " [%s]" % marca if marca else "")
             # 403/429/503 suele ser antibot: cambiar de agente y esperar mas.
             if r.status_code in (403, 429, 503):
-                s.headers["User-Agent"] = random.choice(AGENTES)
+                if not IMPERSONA:
+                    s.headers["User-Agent"] = random.choice(AGENTES)
                 time.sleep(2 + intento * 3)
                 continue
-        except requests.RequestException as e:
+        except ERRORES_RED as e:
             ultimo = type(e).__name__
         time.sleep(1 + intento * 2)
     raise TiendaCaida("%s -> %s" % (url[:70], ultimo))
@@ -499,7 +528,7 @@ def precio_ficha(p: Producto) -> float | None:
                 except ValueError:
                     pass
         return None
-    except (TiendaCaida, requests.RequestException):
+    except (TiendaCaida,) + ERRORES_RED:
         return None
 
 
@@ -555,7 +584,7 @@ def detalle(p: Producto) -> Producto:
         im = meta("og:image")
         if im:
             p.imagen = im
-    except (TiendaCaida, requests.RequestException):
+    except (TiendaCaida,) + ERRORES_RED:
         pass
     return p
 
