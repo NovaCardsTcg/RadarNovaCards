@@ -100,6 +100,7 @@ CONFIG_DEFECTO = {
     "palabras": ["pokemon"],
     "excluir": [],
     "tematica": [],
+    "destacar": [],
     "exigir_palabra": True,
     "tiendas": {k: True for k in tiendas.ADAPTADORES},
     "cada_min": {"amazon": 0, "eci": 0, "mediamarkt": 0,
@@ -185,9 +186,17 @@ def relevante(p, config: dict, exigir_palabra: bool) -> bool:
     return any(normaliza(pal.split()[0]) in t for pal in config["palabras"])
 
 
+def destacado(p, config: dict) -> bool:
+    """El producto encaja con algo de la lista `destacar` de la config."""
+    t = normaliza(p.titulo)
+    return any(contiene(t, x) for x in (config.get("destacar") or []))
+
+
 def formatea(tipo: str, p, anterior=None, config=None) -> tuple[str, tuple[str, str]]:
     iconos = {"nuevo": "NUEVO", "stock": "VUELVE EL STOCK", "precio": "BAJA DE PRECIO"}
     cab = "<b>%s</b> - %s" % (iconos[tipo], tiendas.NOMBRES.get(p.tienda, p.tienda))
+    if config and destacado(p, config):
+        cab = "⭐ " + cab
     lineas = [cab, avisos.esc(p.titulo)]
 
     if tipo == "precio" and anterior and anterior[0]:
@@ -551,10 +560,11 @@ def main() -> int:
 
     pendientes = confirma_bajadas(pendientes, config, estado)
 
-    # Primero lo nuevo, luego el stock, luego las bajadas: si hay recorte por
-    # el tope de avisos, que caiga lo menos urgente.
+    # Primero lo destacado, luego lo nuevo, el stock y las bajadas: si hay
+    # recorte por el tope de avisos, que caiga lo menos urgente y nunca lo que
+    # el usuario ha marcado como que le importa.
     orden = {"nuevo": 0, "stock": 1, "precio": 2}
-    pendientes.sort(key=lambda x: orden[x[0]])
+    pendientes.sort(key=lambda x: (not destacado(x[1], config), orden[x[0]]))
 
     tope = config.get("max_avisos", 15)
     for tipo, p, ant in pendientes[:tope]:

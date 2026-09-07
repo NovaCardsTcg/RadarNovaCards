@@ -12,6 +12,15 @@
     "mediamarkt": 0,
     "pokemoncenter": 30
   },
+  "destacar": [
+    "30 aniversario",
+    "30th aniversario",
+    "30th anniversary",
+    "30 anniversary",
+    "aniversario 30",
+    "30 años",
+    "celebrations"
+  ],
   "excluir": [
     "despertador",
     "memory",
@@ -50,7 +59,9 @@
   "palabras": [
     "pokemon",
     "pokemon jcc",
-    "cartas pokemon"
+    "cartas pokemon",
+    "pokemon 30 aniversario",
+    "pokemon 30th"
   ],
   "pausado": false,
   "rodaje_pasadas": 12,
