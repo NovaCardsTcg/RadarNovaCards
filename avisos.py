@@ -41,17 +41,28 @@ def _chat() -> str:
     return c
 
 
+# Ultimo resultado de la API, para poder dejarlo escrito en estado.json. Sin
+# esto no hay forma de distinguir "los secrets estan mal" de "todo bien pero no
+# habia nada que contar", que desde fuera se ven exactamente igual.
+ULTIMO = {"intentos": 0, "ok": 0, "error": ""}
+
+
 def _llama(metodo: str, **datos):
     """Una llamada a la API. Devuelve None si falla: un aviso perdido no puede
     tumbar la ejecucion ni impedir que se guarde el estado."""
+    ULTIMO["intentos"] += 1
     try:
         r = requests.post(API % (_token(), metodo), json=datos, timeout=TIMEOUT)
         j = r.json()
         if not j.get("ok"):
-            print("[telegram] %s fallo: %s" % (metodo, str(j.get("description"))[:120]))
+            desc = str(j.get("description"))[:120]
+            ULTIMO["error"] = "%s: %s" % (metodo, desc)
+            print("[telegram] %s fallo: %s" % (metodo, desc))
             return None
+        ULTIMO["ok"] += 1
         return j.get("result")
     except (requests.RequestException, ValueError) as e:
+        ULTIMO["error"] = "%s: %s" % (metodo, type(e).__name__)
         print("[telegram] %s error: %s" % (metodo, type(e).__name__))
         return None
 

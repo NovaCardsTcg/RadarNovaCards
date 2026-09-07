@@ -322,6 +322,15 @@ def main() -> int:
         avisos.enviar(msg, silencioso=True)
         time.sleep(0.4)
 
+    # Queda anotado si Telegram esta bien configurado y si los envios cuelan.
+    # Se publica con el estado, asi que se puede comprobar sin entrar a los
+    # logs de Actions ni tener acceso a los secrets del repo.
+    estado["telegram"] = {
+        "credenciales": avisos.hay_credenciales(),
+        "intentos": avisos.ULTIMO["intentos"],
+        "enviados_ok": avisos.ULTIMO["ok"],
+        "ultimo_error": avisos.ULTIMO["error"],
+    }
     estado["ultima_pasada"] = ahora()
     guarda(ESTADO, estado)
     guarda(CONFIG, config, legible=True)
