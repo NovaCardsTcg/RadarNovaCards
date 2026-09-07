@@ -12,10 +12,10 @@ REM Las credenciales salen del fichero .env de esta carpeta.
 
 cd /d "%~dp0"
 echo.
-echo  Revisando El Corte Ingles, MediaMarkt y Carrefour...
+echo  Revisando MediaMarkt y Carrefour...
 echo.
 
-python radar.py --solo eci,mediamarkt,carrefour --estado estado-local.json
+python radar.py --solo mediamarkt,carrefour --estado estado-local.json
 
 echo.
 if errorlevel 1 (

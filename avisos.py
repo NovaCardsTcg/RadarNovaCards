@@ -19,6 +19,8 @@ import time
 
 import requests
 
+import tiendas
+
 API = "https://api.telegram.org/bot%s/%s"
 TIMEOUT = 20
 
@@ -116,6 +118,8 @@ AYUDA = """<b>Radar Pokemon</b>
 /tienda amazon off - encender o apagar una tienda
 /precio 5 - avisar solo si el precio baja un 5% o mas
 /max 15 - maximo de avisos por ciclo
+/vigilar &lt;url&gt; - vigilar el stock de un producto concreto
+/dejar &lt;url&gt; - dejar de vigilarlo
 /pausa - dejar de avisar (sigue tomando nota)
 /reanudar - volver a avisar
 /prueba - manda un aviso de prueba
@@ -223,6 +227,22 @@ def _ejecuta(texto: str, config: dict, estado: dict) -> str:
                boton=("Abrir Amazon", "https://www.amazon.es/s?k=pokemon"))
         return ""
 
+    if cmd in ("vigilar", "dejar"):
+        producto = tiendas.desde_url(arg)
+        if not producto:
+            return ("Pasame el enlace del producto tal cual sale en el navegador.\n"
+                    "Ejemplo: /vigilar https://www.game.es/sobre-de-cartas-...-251944")
+        vig = estado.setdefault("vigilando", {})
+        if cmd == "dejar":
+            if vig.pop(producto.clave, None):
+                return "Ya no vigilo: " + esc(producto.titulo)
+            return "No lo tenia en la lista."
+        # disp a None hace que entre en la cola de repaso en la proxima pasada.
+        vig[producto.clave] = {"url": producto.url, "titulo": producto.titulo,
+                               "disp": None, "visto": 0}
+        return ("Vigilando <b>%s</b>\nTe aviso cuando pase de agotado a comprable.\n"
+                "En la lista hay %d productos." % (esc(producto.titulo), len(vig)))
+
     if cmd == "estado":
         return resumen(estado, config)
 
@@ -239,15 +259,22 @@ def resumen(estado: dict, config: dict) -> str:
         salud = estado.get("salud", {}).get(k, {})
         marca = "!" if salud.get("fallos") else "-"
         filas.append("%s %s: %d" % (marca, k, n))
+    vig = estado.get("vigilando", {})
+    agotados = sum(1 for v in vig.values() if v.get("disp") is False)
+    sin_ver = sum(1 for v in vig.values() if v.get("disp") is None)
     return (
         "<b>Radar Pokemon</b>\n"
         "%s\n"
         "Vigilando <b>%d</b> productos en total.\n\n"
         "%s\n\n"
+        "<b>Stock</b>: %d productos en la lista, %d agotados ahora mismo"
+        "%s\n\n"
         "Palabras: %d | Bajada minima: %g%% | Max avisos: %d\n"
         "Ultima pasada: %s"
         % ("PAUSADO" if config.get("pausado") else "Activo",
            total, "\n".join(filas) or "(ninguna tienda encendida)",
+           len(vig), agotados,
+           (", %d sin repasar todavia" % sin_ver) if sin_ver else "",
            len(config["palabras"]), config.get("bajada_min_pct", 5),
            config.get("max_avisos", 15),
            estado.get("ultima_pasada", "nunca"))

@@ -94,6 +94,8 @@ mucho un ciclo en aplicarse.
 /tienda amazon off   encender o apagar una tienda
 /precio 5            avisar solo si el precio baja un 5% o más
 /max 15              máximo de avisos por ciclo
+/vigilar <url>       vigilar el stock de un producto concreto
+/dejar <url>         quitarlo de la lista
 /pausa  /reanudar    dejar de avisar (sigue tomando nota) y volver
 /prueba              mandar un aviso de prueba
 ```
@@ -109,19 +111,32 @@ ataca por donde se deja. Esto es lo que hay:
 
 | Tienda | Por dónde | Detecta | Dónde corre |
 |---|---|---|---|
-| Amazon.es | buscador ordenado por novedades | nuevo, stock, precio | GitHub, 24/7 |
-| GAME | sitemap de productos | solo nuevo | GitHub, 24/7 |
-| Pokémon Center | sitemap de productos | solo nuevo | GitHub, 24/7 |
-| El Corte Inglés | buscador | nuevo, stock, precio | manual, desde casa |
+| Amazon.es | buscador por novedades | nuevo, stock, precio | GitHub, cada pasada |
+| El Corte Inglés | buscador | nuevo, stock, precio | GitHub, cada pasada |
+| GAME | sitemap + fichas | nuevo, **stock**, precio | GitHub, catálogo cada 30 min |
+| Carrefour | sitemap + fichas | nuevo, **stock**, precio | manual, catálogo cada 6 h |
 | MediaMarkt | buscador | nuevo, stock, precio | manual, desde casa |
-| Carrefour | sitemap de productos | solo nuevo | manual, desde casa |
+| Pokémon Center | — | apagada | — |
 
-**Por qué tres van a mano.** El Corte Inglés (Akamai), MediaMarkt y Carrefour
-(Cloudflare) devuelven 403 a los runners de GitHub, que salen por rangos de IP de
-centro de datos. Es bloqueo por reputación de la IP, no por cómo se pide: desde una
-conexión doméstica responden las seis sin pelear. Amazon también bloqueaba al
-principio, pero eso sí se arregló pidiendo la portada antes para coger la cookie de
-sesión; con las otras tres esa misma técnica no basta.
+**Por qué dos van a mano.** MediaMarkt y Carrefour devuelven 403 a los runners de
+GitHub, que salen por rangos de IP de centro de datos. Es bloqueo por reputación de la
+IP: desde una conexión doméstica responden sin pelear.
+
+Contra eso se probaron dos cosas, y las dos ganaron terreno:
+
+- **Pedir la portada antes**, para entrar con cookie de sesión en vez de en frío.
+  Recuperó Amazon.
+- **`curl_cffi` imitando la huella TLS de Chrome.** `requests` tiene un apretón de
+  manos SSL reconocible por mucho que le arregles las cabeceras, y es una señal
+  independiente de la IP. Recuperó El Corte Inglés.
+
+Con MediaMarkt y Carrefour ninguna de las dos basta.
+
+**Filtro temático.** Sin él, "pokemon" en Carrefour saca 981 productos que son mochilas,
+funkos, peluches, tazas y sábanas: solo 27 llevaban "cartas" en el nombre. La lista
+`tematica` de `config.json` exige que el nombre contenga algo de TCG (cartas, sobres,
+latas, ETB, displays...). Carrefour queda en 91 y GAME en 63, que además es lo que hace
+viable comprobarles el stock uno por uno.
 
 **Por qué unas dan precio y otras no.** GAME pinta el buscador con JavaScript y lo
 protege con reCAPTCHA; Carrefour tapa buscador y API con Cloudflare (devuelven 403 y
@@ -143,11 +158,11 @@ minutos sería tirar ancho de banda sin ganar nada: las altas nuevas no van tan 
 
 ---
 
-## 5. La pasada manual (las tres bloqueadas)
+## 5. La pasada manual (MediaMarkt y Carrefour)
 
-Doble clic en **`revisar.bat`**. Consulta El Corte Inglés, MediaMarkt y Carrefour desde
-tu conexión y te avisa por el mismo bot. Tarda algo menos de dos minutos, casi todo
-Carrefour, que son 40 sitemaps.
+Doble clic en **`revisar.bat`**. Consulta MediaMarkt y Carrefour desde tu conexión y te
+avisa por el mismo bot. Tarda un par de minutos, casi todo Carrefour, que son 40
+sitemaps de 1,5 MB.
 
 Antes de la primera vez, prepara las credenciales:
 
@@ -166,7 +181,30 @@ mismo `.bat` vale para el Programador de tareas de Windows.
 
 ---
 
-## 6. Por qué las bajadas se confirman en la ficha
+## 6. Cómo se vigila el stock en GAME y Carrefour
+
+En estas dos el sitemap dice que un producto existe, pero no si se puede comprar. Para
+saberlo hay que abrir su ficha, y son 154: no caben en una pasada. Así que se guarda la
+lista en el estado y se repasan por turnos, 25 fichas por pasada, con esta prioridad:
+
+1. **Los que constan agotados.** Son los únicos que pueden dar la noticia, así que se
+   miran siempre y primero.
+2. **Los que no se han mirado nunca.** Es el barrido inicial, que descubre cuáles están
+   agotados hoy. Con 154 productos son unas seis pasadas, o sea una hora larga.
+3. **Los que constan disponibles**, por si se agotan. Por turnos y sin prisa.
+
+Cuando uno pasa de agotado a comprable, salta el aviso de VUELVE EL STOCK.
+
+Puedes añadir productos concretos con **`/vigilar`** y el enlace, vengan de donde vengan.
+Entran en la cola con prioridad de "nunca mirado", así que se comprueban en la pasada
+siguiente. `/dejar` y el enlace los saca de la lista.
+
+Cómo se lee la disponibilidad en cada una: Carrefour lo declara en su `ld+json` de
+Schema.org; GAME no, ahí la señal es si existe el botón de añadir a la cesta.
+
+---
+
+## 7. Por qué las bajadas se confirman en la ficha
 
 El precio de la tarjeta del buscador y el de la ficha del producto no siempre
 coinciden. Pasa sobre todo en Amazon: ofertas de otros vendedores que ganan y
@@ -189,7 +227,7 @@ comprobaciones por pasada.
 
 ---
 
-## 7. Lo que puede salir mal
+## 8. Lo que puede salir mal
 
 **Amazon corta de vez en cuando.** Devolvió 403 y 503 desde GitHub hasta que se añadió
 lo de pedir la portada primero. Aun así cuenta con cortes sueltos: el radar reintenta,
@@ -211,7 +249,7 @@ pasada escribe en la rama `estado`, y eso cuenta como actividad.
 
 ---
 
-## 8. Ficheros
+## 9. Ficheros
 
 | Fichero | Qué hace |
 |---|---|
@@ -232,7 +270,7 @@ permite que los cambios que haces por Telegram sobrevivan de una pasada a la sig
 
 ---
 
-## 9. Probarlo en local
+## 10. Probarlo en local
 
 ```bash
 pip install -r requirements.txt

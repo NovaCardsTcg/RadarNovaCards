@@ -16,6 +16,7 @@
     "pegatinas"
   ],
   "exigir_palabra": true,
+  "fichas_por_pasada": 25,
   "max_avisos": 15,
   "palabras": [
     "pokemon",
@@ -24,12 +25,32 @@
   ],
   "pausado": false,
   "rodaje_pasadas": 12,
+  "tematica": [
+    "carta",
+    "sobre",
+    "jcc",
+    "tcg",
+    "etb",
+    "booster",
+    "lata",
+    "blister",
+    "mazo",
+    "baraja",
+    "coleccion",
+    "expansion",
+    "display",
+    "bundle",
+    "caja",
+    "album",
+    "megaevolucion",
+    "entrenador elite"
+  ],
   "tiendas": {
     "amazon": true,
     "carrefour": true,
     "eci": true,
     "game": true,
     "mediamarkt": true,
-    "pokemoncenter": true
+    "pokemoncenter": false
   }
 }

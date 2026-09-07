@@ -24,7 +24,8 @@ import re
 import time
 import unicodedata
 from dataclasses import dataclass
-from urllib.parse import quote_plus
+from html import unescape
+from urllib.parse import quote_plus, urlparse
 
 import requests
 from bs4 import BeautifulSoup
@@ -104,6 +105,8 @@ MARCADORES = {
     "amazon-bot": ("api-services-support@amazon.com", "introduce los caracteres",
                    "continuar comprando", "continue shopping"),
     "generico": ("unusual traffic", "bot detected", "are you a robot"),
+    # bm-verify solo se ve si el interstitial no se ha podido atravesar.
+    "amazon-verify": ("bm-verify",),
 }
 
 
@@ -152,13 +155,40 @@ def _sesion(portada: str | None = None) -> requests.Session:
     return s
 
 
+def _sigue_interstitial(s, r, **kw):
+    """Atraviesa la pagina de verificacion de Amazon.
+
+    Cuando Amazon duda de ti no responde 403: devuelve un 200 de 2 KB con un
+    <meta http-equiv="refresh"> que apunta a la misma URL con un token
+    bm-verify pegado, y a los 5 segundos el navegador se recarga solo. Un
+    script que no lo siga se cree que la busqueda no ha dado resultados.
+
+    Basta con hacer lo que haria el navegador: esperar y pedir el destino.
+    """
+    if len(r.text) > 20000:
+        return r
+    m = re.search(r'http-equiv="refresh"[^>]*content="\s*(\d+)\s*;\s*URL=\'([^\']+)\'',
+                  r.text, re.I)
+    if not m:
+        return r
+    espera = min(int(m.group(1)), 10)
+    destino = unescape(m.group(2))
+    if destino.startswith("/"):
+        destino = "https://" + urlparse(r.url).netloc + destino
+    time.sleep(espera)
+    try:
+        return s.get(destino, timeout=TIMEOUT, **kw)
+    except ERRORES_RED:
+        return r
+
+
 def _get(s: requests.Session, url: str, **kw) -> requests.Response:
     ultimo = None
     for intento in range(REINTENTOS):
         try:
             r = s.get(url, timeout=TIMEOUT, **kw)
             if r.status_code == 200:
-                return r
+                return _sigue_interstitial(s, r, **kw)
             marca = _marcador(r.text)
             ultimo = "HTTP %s%s" % (r.status_code, " [%s]" % marca if marca else "")
             # 403/429/503 suele ser antibot: cambiar de agente y esperar mas.
@@ -174,10 +204,15 @@ def _get(s: requests.Session, url: str, **kw) -> requests.Response:
 
 
 def _precio(texto: str) -> float | None:
-    """'1.234,56 EUR' -> 1234.56. None si no hay nada parseable."""
+    """'1.234,56 EUR' -> 1234.56. None si no hay nada parseable.
+
+    Admite apostrofo ademas de coma porque GAME parte el precio en dos spans y
+    el texto sale como "69 '99 €". Sin esto se leia 69 en vez de 69,99, que en
+    un radar de bajadas de precio no es un detalle menor.
+    """
     if not texto:
         return None
-    m = re.search(r"(\d{1,3}(?:\.\d{3})*|\d+),(\d{2})", texto)
+    m = re.search(r"(\d{1,3}(?:\.\d{3})*|\d+)\s*[,'](\d{2})\b", texto)
     if m:
         return float(m.group(1).replace(".", "") + "." + m.group(2))
     m = re.search(r"(\d+(?:\.\d+)?)", texto.replace(".", ""))
@@ -395,9 +430,15 @@ def _titulo_desde_slug(url: str) -> str:
 
 
 def _encaja(url: str, palabras: list[str]) -> bool:
-    """En un sitemap solo tenemos la URL, asi que se filtra por el slug."""
+    """En un sitemap solo tenemos la URL, asi que se filtra por el slug.
+
+    Se exigen TODAS las palabras del termino, no solo la primera. Mirando solo
+    la primera, "cartas pokemon" dejaba entrar cualquier cosa con "cartas" en la
+    URL: sobres de Magic, de Hello Kitty y de Yu-Gi-Oh se colaban en el radar de
+    Pokemon. En GAME eran 742 productos en vez de 409.
+    """
     u = normaliza(url)
-    return any(normaliza(p.split()[0]) in u for p in palabras)
+    return any(all(t in u for t in normaliza(p).split()) for p in palabras)
 
 
 def game(palabras: list[str]) -> list[Producto]:
@@ -489,47 +530,125 @@ PRECIO_EN_FICHA = {
                "span.a-price span.a-offscreen"),
     "eci": ('[data-synth="PRICE"]', ".price-sale", ".product_detail-price"),
     "mediamarkt": ('[data-test="mms-product-price"]', '[data-test="branded-price-value"]'),
+    # GAME parte el precio en spans (int / decimal) y usa apostrofo de separador.
+    # El primer .buy--price de la pagina es el del producto; los siguientes son
+    # los de los productos relacionados.
+    "game": (".buy--price",),
 }
 
 
-def precio_ficha(p: Producto) -> float | None:
-    """Precio actual en la ficha del producto, o None si no se puede leer.
+# Como se sabe si un producto esta comprable, mirando su ficha. Cada tienda lo
+# dice a su manera y ninguna con la misma etiqueta.
+STOCK_EN_FICHA = {
+    # GAME no declara availability en su ld+json: el boton de comprar esta o no
+    # esta, y esa es toda la senal. Comprobado sobre 8 fichas al azar: 4 con
+    # boton y stock, 4 sin boton y agotadas.
+    "game": ("button.buy--btn",),
+    "eci": ('[data-synth="ADD_TO_CART"]', ".product_detail-buy button"),
+    "mediamarkt": ('[data-test="cofr-add-to-basket-button"]',),
+}
 
-    Se usa para confirmar las bajadas antes de avisar. None significa "no he
-    podido comprobarlo", que no es lo mismo que "no ha bajado": quien llama
-    decide que hacer con la duda.
+
+def ficha(p: Producto) -> tuple[float | None, bool | None]:
+    """Precio y disponibilidad leidos de la ficha del producto.
+
+    Devuelve (None, None) si no se ha podido comprobar, que no es lo mismo que
+    "sin precio" o "agotado": quien llama decide que hacer con la duda.
     """
     try:
         s = _sesion(_PORTADAS.get(p.tienda))
         r = _get(s, p.url)
         sopa = BeautifulSoup(r.text, "lxml")
 
+        precio = disponible = None
+
         for sel in PRECIO_EN_FICHA.get(p.tienda, ()):
             el = sopa.select_one(sel)
             if el:
-                valor = _precio(el.get_text(" ", strip=True))
-                if valor:
-                    return valor
+                precio = _precio(el.get_text(" ", strip=True))
+                if precio:
+                    break
 
-        # Reserva para cualquier tienda: el precio del ld+json de Schema.org.
-        for ld in sopa.find_all("script", type="application/ld+json"):
-            try:
-                d = json.loads(ld.string or "{}")
-            except (json.JSONDecodeError, AttributeError):
-                continue
-            d = d[0] if isinstance(d, list) and d else d
-            if not isinstance(d, dict):
-                continue
-            ofertas = d.get("offers") or {}
-            ofertas = ofertas[0] if isinstance(ofertas, list) and ofertas else ofertas
-            if isinstance(ofertas, dict) and ofertas.get("price"):
+        for sel in STOCK_EN_FICHA.get(p.tienda, ()):
+            if sopa.select_one(sel):
+                disponible = True
+                break
+        else:
+            if p.tienda in STOCK_EN_FICHA:
+                disponible = False
+
+        # Schema.org: lo rellena Carrefour y sirve de reserva para el resto.
+        if precio is None or disponible is None:
+            for ld in sopa.find_all("script", type="application/ld+json"):
                 try:
-                    return float(str(ofertas["price"]).replace(",", "."))
-                except ValueError:
-                    pass
-        return None
+                    d = json.loads(ld.string or "{}")
+                except (json.JSONDecodeError, AttributeError):
+                    continue
+                d = d[0] if isinstance(d, list) and d else d
+                if not isinstance(d, dict):
+                    continue
+                ofertas = d.get("offers") or {}
+                ofertas = ofertas[0] if isinstance(ofertas, list) and ofertas else ofertas
+                if not isinstance(ofertas, dict):
+                    continue
+                if precio is None and ofertas.get("price"):
+                    try:
+                        precio = float(str(ofertas["price"]).replace(",", "."))
+                    except ValueError:
+                        pass
+                if disponible is None and ofertas.get("availability"):
+                    disponible = "instock" in str(ofertas["availability"]).lower()
+        return precio, disponible
     except (TiendaCaida,) + ERRORES_RED:
+        return None, None
+
+
+def precio_ficha(p: Producto) -> float | None:
+    """Solo el precio. Se usa para confirmar las bajadas antes de avisar."""
+    return ficha(p)[0]
+
+
+# Como sacar la referencia del producto de una URL pegada a mano en Telegram.
+DE_URL = {
+    "amazon.es": r"/(?:dp|gp/product)/([A-Z0-9]{10})",
+    "elcorteingles.es": r"/(A\d{6,})",
+    "mediamarkt.es": r"-(\d+)\.html",
+    "game.es": r"-(\d+)/?$",
+    "carrefour.es": r"/(\d{8,14})/p",
+    "pokemoncenter.com": r"/product/([\w-]+)/",
+}
+
+
+def desde_url(url: str) -> Producto | None:
+    """Convierte una URL de tienda en un Producto identificable.
+
+    Se usa para el comando /vigilar: la persona pega el enlace del producto que
+    quiere y hay que saber de que tienda es y con que referencia guardarlo, para
+    que case con lo que ya hay en memoria.
+    """
+    url = url.strip()
+    if not url.startswith("http"):
         return None
+    dominio = urlparse(url).netloc.lower()
+    for host, patron in DE_URL.items():
+        if not dominio.endswith(host):
+            continue
+        m = re.search(patron, url)
+        if not m:
+            return None
+        return Producto(tienda=_TIENDA_POR_HOST[host], pid=m.group(1),
+                        titulo=_titulo_desde_slug(url), url=url)
+    return None
+
+
+_TIENDA_POR_HOST = {
+    "amazon.es": "amazon",
+    "elcorteingles.es": "eci",
+    "mediamarkt.es": "mediamarkt",
+    "game.es": "game",
+    "carrefour.es": "carrefour",
+    "pokemoncenter.com": "pokemoncenter",
+}
 
 
 _PORTADAS = {

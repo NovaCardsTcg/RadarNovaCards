@@ -98,6 +98,7 @@ def guarda(ruta: str, datos: dict, legible: bool = False):
 CONFIG_DEFECTO = {
     "palabras": ["pokemon"],
     "excluir": [],
+    "tematica": [],
     "exigir_palabra": True,
     "tiendas": {k: True for k in tiendas.ADAPTADORES},
     "cada_min": {"amazon": 0, "eci": 0, "mediamarkt": 0,
@@ -106,6 +107,7 @@ CONFIG_DEFECTO = {
     "bajada_min_eur": 1.0,
     "max_avisos": 15,
     "rodaje_pasadas": 12,
+    "fichas_por_pasada": 25,
     "pausado": False,
 }
 
@@ -114,6 +116,7 @@ ESTADO_DEFECTO = {
     "salud": {},          # tienda -> {fallos, ultimo_error, ultima_ok}
     "sembrado": {},       # tienda -> true cuando ya tiene una foto inicial
     "ultima_tienda": {},  # tienda -> timestamp epoch de la ultima consulta
+    "vigilando": {},      # clave -> {url, titulo, disp, visto} para el stock
     "pasadas": 0,         # para saber cuando termina el rodaje
     "aviso_rodaje": False,
     "telegram_offset": 0,
@@ -152,6 +155,15 @@ def relevante(p, config: dict, exigir_palabra: bool) -> bool:
     for mala in config.get("excluir", []):
         if normaliza(mala) in t:
             return False
+
+    # Filtro tematico. Sin el, "pokemon" en Carrefour saca 981 productos que son
+    # mochilas, funkos, peluches, tazas y sabanas: solo 27 llevaban "cartas" en
+    # el nombre. Con el se queda en 91, que ademas es lo que hace viable
+    # comprobarles el stock uno por uno.
+    tematica = config.get("tematica") or []
+    if tematica and not any(normaliza(x) in t for x in tematica):
+        return False
+
     if not exigir_palabra or not config.get("exigir_palabra", True):
         return True
     return any(normaliza(pal.split()[0]) in t for pal in config["palabras"])
@@ -231,6 +243,69 @@ def confirma_bajadas(pendientes: list[tuple], config: dict, estado: dict) -> lis
         p.precio = real
         salida.append((tipo, p, ant))
     return salida
+
+
+def registra_para_vigilar(tienda: str, productos: list, estado: dict):
+    """Apunta los productos de las fuentes de sitemap para poder mirarles el stock.
+
+    En estas tiendas el sitemap dice que existe un producto, pero no si se puede
+    comprar. Para eso hay que abrir la ficha, y son cientos: no caben en una
+    pasada. Asi que se guarda la lista y se van repasando poco a poco.
+    """
+    vig = estado.setdefault("vigilando", {})
+    for p in productos:
+        entrada = vig.get(p.clave)
+        if entrada is None:
+            vig[p.clave] = {"url": p.url, "titulo": p.titulo, "disp": None, "visto": 0}
+        else:
+            entrada["url"] = p.url
+            entrada["titulo"] = p.titulo
+
+
+def repasa_stock(config: dict, estado: dict) -> list[tuple]:
+    """Abre fichas del catalogo vigilado y detecta los que vuelven a estar a la venta.
+
+    El orden de prioridad es lo que hace que esto funcione con un presupuesto
+    pequeno de peticiones por pasada:
+
+      1. Los que se sabe agotados. Son los unicos que pueden dar la noticia, asi
+         que se miran siempre y primero.
+      2. Los que no se han mirado nunca. Es el barrido inicial: descubre cuales
+         estan agotados hoy. Con el filtro tematico son ~155 productos, o sea
+         unas ocho pasadas.
+      3. Los que constan disponibles, por si se agotan. Se repasan por turnos y
+         sin prisa, que ahi no hay nada urgente.
+    """
+    vig = estado.get("vigilando") or {}
+    if not vig:
+        return []
+
+    agotados = [k for k, v in vig.items() if v.get("disp") is False]
+    sin_ver = [k for k, v in vig.items() if v.get("disp") is None]
+    con_stock = sorted((k for k, v in vig.items() if v.get("disp") is True),
+                       key=lambda k: vig[k].get("visto", 0))
+
+    presupuesto = config.get("fichas_por_pasada", 25)
+    cola = (agotados + sin_ver + con_stock)[:presupuesto]
+
+    sucesos = []
+    for clave in cola:
+        v = vig[clave]
+        tienda, pid = clave.split(":", 1)
+        p = tiendas.Producto(tienda=tienda, pid=pid, titulo=v["titulo"], url=v["url"])
+        precio, disponible = tiendas.ficha(p)
+        v["visto"] = int(time.time())
+        if disponible is None:
+            continue  # no se ha podido leer: se deja como estaba
+        antes = v.get("disp")
+        v["disp"] = disponible
+        if precio is not None:
+            v["precio"] = precio
+        if antes is False and disponible:
+            p.precio = precio
+            p.disponible = True
+            sucesos.append(("stock", p, None))
+    return sucesos
 
 
 def compara(tienda: str, productos: list, config: dict, estado: dict,
@@ -344,6 +419,22 @@ def main() -> int:
         if respuestas:
             avisos.responde(respuestas)
 
+    # Al apagar una tienda, lo suyo queda en memoria ocupando sitio para nada:
+    # Pokemon Center eran 8.399 productos. Se limpia, pero solo en la pasada
+    # completa: en una manual con --solo el resto de tiendas estan apagadas de
+    # mentira y borrarlas seria cargarse la memoria buena.
+    if not args.solo:
+        apagadas = {t for t, on in config["tiendas"].items() if not on}
+        if apagadas:
+            for deposito in ("productos", "vigilando"):
+                antes = len(estado.get(deposito, {}))
+                estado[deposito] = {k: v for k, v in estado.get(deposito, {}).items()
+                                    if k.split(":", 1)[0] not in apagadas}
+                fuera = antes - len(estado[deposito])
+                if fuera:
+                    print("[limpieza] %s: %d entradas de tiendas apagadas"
+                          % (deposito, fuera))
+
     estado["pasadas"] = estado.get("pasadas", 0) + 1
     rodaje = config.get("rodaje_pasadas", 12)
     en_rodaje = estado["pasadas"] <= rodaje and not resembrar
@@ -381,6 +472,10 @@ def main() -> int:
                 avisos_sistema.append(msg)
             continue
 
+        # Las tiendas de sitemap alimentan la lista de vigilancia de stock.
+        if not da_precio and tienda in ("game", "carrefour"):
+            registra_para_vigilar(tienda, productos, estado)
+
         primera = not estado["sembrado"].get(tienda) or resembrar
         sucesos = compara(tienda, productos, config, estado, en_rodaje)
         resumen_pasada.append("%s:%d" % (tienda, len(productos)))
@@ -398,6 +493,11 @@ def main() -> int:
             continue
 
         pendientes.extend(sucesos)
+
+    # El repaso de stock va aparte del barrido de catalogos: la lista de
+    # vigilancia ya esta en el estado, asi que se puede mirar en cada pasada
+    # aunque el sitemap de Carrefour solo se descargue cada seis horas.
+    pendientes.extend(repasa_stock(config, estado))
 
     # Las fuentes de sitemap solo traen la URL: se abre la ficha de las altas
     # nuevas para poder mandar titulo y precio de verdad.
