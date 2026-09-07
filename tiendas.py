@@ -570,11 +570,17 @@ STOCK_EN_FICHA = {
 }
 
 
-def ficha(p: Producto) -> tuple[float | None, bool | None]:
-    """Precio y disponibilidad leidos de la ficha del producto.
+def _lee_ficha(p: Producto) -> dict:
+    """Abre la ficha UNA vez y saca de ella todo lo que se pueda.
 
-    Devuelve (None, None) si no se ha podido comprobar, que no es lo mismo que
-    "sin precio" o "agotado": quien llama decide que hacer con la duda.
+    Existe para que no haya dos sitios distintos sabiendo leer el precio de una
+    tienda. Los habia, y GAME lo pagaba: el aviso de producto nuevo iba por un
+    camino que solo miraba las metaetiquetas Open Graph, que GAME no rellena, y
+    salia siempre sin precio, mientras el repaso de stock leia 6,99 sin
+    problema por el otro. Ahora los dos caminos entran por aqui.
+
+    Devuelve {} si la ficha no se ha podido leer, que no es lo mismo que "sin
+    precio" o "agotado": quien llama decide que hacer con la duda.
     """
     try:
         s = _sesion(_PORTADAS.get(p.tienda))
@@ -619,9 +625,29 @@ def ficha(p: Producto) -> tuple[float | None, bool | None]:
                         pass
                 if disponible is None and ofertas.get("availability"):
                     disponible = "instock" in str(ofertas["availability"]).lower()
-        return precio, disponible
+
+        def meta(*props):
+            for prop in props:
+                el = (sopa.find("meta", property=prop)
+                      or sopa.find("meta", attrs={"name": prop}))
+                if el and el.get("content"):
+                    return el["content"].strip()
+            return None
+
+        titulo = meta("og:title", "twitter:title")
+        if titulo:
+            titulo = re.sub(r"\s*[|-]\s*(GAME|Carrefour|Pok.mon Center).*$", "",
+                            titulo).strip()
+        return {"precio": precio, "disponible": disponible,
+                "titulo": titulo, "imagen": meta("og:image")}
     except (TiendaCaida,) + ERRORES_RED:
-        return None, None
+        return {}
+
+
+def ficha(p: Producto) -> tuple[float | None, bool | None]:
+    """Precio y disponibilidad de la ficha. (None, None) si no se ha podido leer."""
+    d = _lee_ficha(p)
+    return d.get("precio"), d.get("disponible")
 
 
 def precio_ficha(p: Producto) -> float | None:
@@ -682,50 +708,22 @@ _PORTADAS = {
 
 
 def detalle(p: Producto) -> Producto:
-    """Completa titulo/precio/imagen leyendo las metaetiquetas Open Graph.
+    """Completa titulo, precio, stock e imagen abriendo la ficha del producto.
 
-    Se llama solo para altas nuevas, que son pocas. Si falla, se deja el
-    producto como estaba: un aviso con el titulo sacado del slug es
-    infinitamente mejor que ningun aviso.
+    Se llama solo para las altas nuevas de las fuentes de sitemap, que traen la
+    URL pero nada mas. Si la ficha no se puede leer, el producto se queda como
+    estaba: un aviso con el titulo sacado del slug es infinitamente mejor que
+    ningun aviso.
     """
-    try:
-        s = _sesion()
-        r = _get(s, p.url)
-        sopa = BeautifulSoup(r.text, "lxml")
-
-        def meta(*props):
-            for prop in props:
-                el = (sopa.find("meta", property=prop)
-                      or sopa.find("meta", attrs={"name": prop}))
-                if el and el.get("content"):
-                    return el["content"].strip()
-            return None
-
-        t = meta("og:title", "twitter:title")
-        if t:
-            p.titulo = re.sub(r"\s*[|-]\s*(GAME|Carrefour|Pok.mon Center).*$", "", t).strip()
-        pr = meta("product:price:amount", "og:price:amount")
-        if pr:
-            p.precio = _precio(pr.replace(".", ","))
-        else:
-            ld = sopa.find("script", type="application/ld+json")
-            if ld:
-                try:
-                    d = json.loads(ld.string or "{}")
-                    d = d[0] if isinstance(d, list) and d else d
-                    ofertas = d.get("offers") or {}
-                    ofertas = ofertas[0] if isinstance(ofertas, list) and ofertas else ofertas
-                    if ofertas.get("price"):
-                        p.precio = float(str(ofertas["price"]).replace(",", "."))
-                    if ofertas.get("availability"):
-                        p.disponible = "InStock" in str(ofertas["availability"])
-                except (json.JSONDecodeError, ValueError, AttributeError, TypeError):
-                    pass
-        im = meta("og:image")
-        if im:
-            p.imagen = im
-    except (TiendaCaida,) + ERRORES_RED:
-        pass
+    d = _lee_ficha(p)
+    if d.get("titulo"):
+        p.titulo = d["titulo"]
+    if d.get("precio") is not None:
+        p.precio = d["precio"]
+    if d.get("disponible") is not None:
+        p.disponible = d["disponible"]
+    if d.get("imagen"):
+        p.imagen = d["imagen"]
     return p
 
 
