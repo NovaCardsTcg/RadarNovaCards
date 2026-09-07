@@ -1,0 +1,35 @@
+{
+  "bajada_min_eur": 1.0,
+  "bajada_min_pct": 5.0,
+  "cada_min": {
+    "amazon": 0,
+    "carrefour": 360,
+    "eci": 0,
+    "game": 30,
+    "mediamarkt": 0,
+    "pokemoncenter": 30
+  },
+  "excluir": [
+    "funda movil",
+    "calcetines",
+    "disfraz",
+    "pegatinas"
+  ],
+  "exigir_palabra": true,
+  "max_avisos": 15,
+  "palabras": [
+    "pokemon",
+    "pokemon jcc",
+    "cartas pokemon"
+  ],
+  "pausado": false,
+  "rodaje_pasadas": 12,
+  "tiendas": {
+    "amazon": true,
+    "carrefour": true,
+    "eci": true,
+    "game": true,
+    "mediamarkt": true,
+    "pokemoncenter": true
+  }
+}

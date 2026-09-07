@@ -1,0 +1,59 @@
+name: radar
+
+on:
+  schedule:
+    # Cada 10 minutos. GitHub no admite menos de 5, y en la practica los cron
+    # programados llegan con retraso variable cuando hay cola: cuenta con
+    # 10-20 minutos reales entre pasadas, no con 10 clavados.
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+# Dos pasadas a la vez se pisarian el estado. Que espere la siguiente.
+concurrency:
+  group: radar-pokemon
+  cancel-in-progress: false
+
+jobs:
+  radar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      # El estado vive en su propia rama huerfana, no en main: asi el historial
+      # de main no se llena de commits automaticos y el repo no engorda.
+      - name: Recuperar estado de la pasada anterior
+        run: |
+          git fetch origin estado:estado 2>/dev/null || echo "primera ejecucion: aun no hay rama estado"
+          git checkout estado -- estado.json config.json 2>/dev/null || echo "arrancando con la config del repo"
+
+      - name: Pasada del radar
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python radar.py
+
+      # Se reescribe la rama entera con un unico commit cada vez (push -f sobre
+      # una rama huerfana). El estado es una foto del momento, no un historial:
+      # no interesa guardar las 144 fotos de cada dia.
+      - name: Guardar estado
+        if: always()
+        run: |
+          if [ ! -f estado.json ]; then echo "sin estado que guardar"; exit 0; fi
+          git config user.name "radar-pokemon"
+          git config user.email "radar@users.noreply.github.com"
+          git checkout --orphan estado_nuevo
+          git rm -rf --cached . > /dev/null
+          git add -f estado.json config.json
+          git commit -q -m "estado $(date -u '+%Y-%m-%d %H:%M UTC')"
+          git push -f origin estado_nuevo:estado
