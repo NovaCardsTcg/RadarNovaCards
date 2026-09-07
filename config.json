@@ -51,7 +51,18 @@
     "camiseta",
     "zapatilla",
     "muneco",
-    "caja click"
+    "caja click",
+    "myboost",
+    "ultraboost",
+    "carta suelta",
+    "psa",
+    "graded",
+    "near mint",
+    "my-booster",
+    "mybooster"
+  ],
+  "excluir_patron": [
+    "\\b[A-Z]{0,3}\\d{1,3}\\s*/\\s*[A-Z]{0,3}\\d{2,3}\\b"
   ],
   "exigir_palabra": true,
   "fichas_por_pasada": 25,

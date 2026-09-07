@@ -101,6 +101,7 @@ CONFIG_DEFECTO = {
     "excluir": [],
     "tematica": [],
     "destacar": [],
+    "excluir_patron": [],
     "exigir_palabra": True,
     "tiendas": {k: True for k in tiendas.ADAPTADORES},
     "cada_min": {"amazon": 0, "eci": 0, "mediamarkt": 0,
@@ -173,6 +174,15 @@ def relevante(p, config: dict, exigir_palabra: bool) -> bool:
         if contiene(t, mala):
             return False
 
+    # Patrones para lo que una lista de palabras no sabe describir. El caso real
+    # es la carta suelta: lo que la delata no es una palabra sino el numero de
+    # coleccion en el titulo ("071/072", "SV041/SV122"). Con el filtro de
+    # vendedor puesto seguian entrando 44 de 89 productos de Amazon, todas
+    # cartas sueltas de revendedores.
+    for patron in config.get("excluir_patron", []):
+        if re.search(patron, p.titulo, re.I):
+            return False
+
     # Filtro tematico. Sin el, "pokemon" en Carrefour saca 981 productos que son
     # mochilas, funkos, peluches, tazas y sabanas: solo 27 llevaban "cartas" en
     # el nombre. Con el se queda en unos 60, que ademas es lo que hace viable
@@ -183,7 +193,11 @@ def relevante(p, config: dict, exigir_palabra: bool) -> bool:
 
     if not exigir_palabra or not config.get("exigir_palabra", True):
         return True
-    return any(normaliza(pal.split()[0]) in t for pal in config["palabras"])
+    # Todas las palabras del termino, no solo la primera. Mirando la primera,
+    # "cartas pokemon" dejaba pasar cualquier cosa con "cartas" en el titulo:
+    # entraban barajas de Disney y juegos de cartas de Stitch.
+    return any(all(x in t for x in normaliza(pal).split())
+               for pal in config["palabras"])
 
 
 def destacado(p, config: dict) -> bool:

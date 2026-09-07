@@ -146,6 +146,17 @@ casaba con "escar**lata**" (los juegos de Switch) y con "p**lata**forma" (los
 auriculares), y "sobre" casaba con la preposición: *"despertador pokemon bulbasaur
 **sobre** pokeball"*. Por eso el término es `sobre de` y no `sobre`.
 
+**Solo producto sellado oficial en Amazon.** Además del filtro de vendedor, se descarta
+la carta suelta. Lo que la delata no es una palabra sino el número de colección en el
+título (`071/072`, `SV041/SV122`), así que va por `excluir_patron`, una lista de
+expresiones regulares. Con solo el filtro de vendedor seguían entrando 44 de 89
+productos, todas cartas sueltas de revendedores tipo Myboost o Ultraboost.
+
+Se intentó también filtrar por marca con la faceta de Amazon (`p_123:325733` es
+Pokémon), pero combinar dos facetas en el mismo `rh` no las cruza: vendedor daba 18
+resultados, marca 48, y las dos juntas 45 en vez de los 9 de la intersección real. Por
+eso el vendedor va por URL y lo demás se filtra aquí.
+
 **Solo lo que vende Amazon.** En Amazon la mitad del catálogo es reventa de terceros.
 `amazon_vendedores` en `config.json` restringe la búsqueda usando la faceta de vendedor
 del propio buscador de Amazon (`rh=p_6:<id>`), no adivinando el vendedor desde la ficha:
