@@ -6,12 +6,21 @@ minutos, lee el estado de la pasada anterior, compara y se muere. Todo lo que
 tiene que sobrevivir entre ejecuciones esta en estado.json.
 
 Uso:
-    python radar.py            una pasada normal
-    python radar.py --resembrar  vuelve a sembrar (no avisa, solo toma nota)
+    python radar.py                      una pasada normal (la que corre en GitHub)
+    python radar.py --resembrar          vuelve a sembrar, sin avisar de nada
+    python radar.py --solo eci,carrefour solo esas tiendas
+    python radar.py --estado otro.json   usa otro fichero de memoria
+
+Las dos ultimas son las que permiten la pasada manual desde casa: El Corte
+Ingles, MediaMarkt y Carrefour bloquean las IPs de centro de datos por las que
+sale GitHub, pero desde una conexion domestica responden sin problema. Con
+--solo y --estado se lanzan aparte y con su propia memoria, sin pisar la que
+mantiene GitHub para las otras tres tiendas.
 """
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import sys
@@ -35,6 +44,26 @@ MAX_FICHAS = 10
 
 def ahora() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
+
+
+def carga_env():
+    """Lee un .env de al lado, si existe, para las ejecuciones desde casa.
+
+    En GitHub las credenciales llegan como variables de entorno del workflow y
+    esto no hace nada. En local evita tener que exportarlas a mano cada vez, y
+    mantiene el token fuera del repo: .env esta en .gitignore.
+    """
+    ruta = os.path.join(AQUI, ".env")
+    if not os.path.exists(ruta):
+        return
+    with open(ruta, encoding="utf-8") as f:
+        for linea in f:
+            linea = linea.strip()
+            if not linea or linea.startswith("#") or "=" not in linea:
+                continue
+            clave, valor = linea.split("=", 1)
+            # Lo que ya venga del entorno manda: en Actions no se pisa nada.
+            os.environ.setdefault(clave.strip(), valor.strip().strip('"').strip("'"))
 
 
 def carga(ruta: str, defecto: dict) -> dict:
@@ -214,19 +243,46 @@ def salud_tienda(tienda: str, estado: dict, ok: bool, error: str = "") -> str | 
 
 
 def main() -> int:
-    resembrar = "--resembrar" in sys.argv
+    p = argparse.ArgumentParser(description="Radar Pokemon: una pasada por las tiendas")
+    p.add_argument("--resembrar", action="store_true",
+                   help="vuelve a tomar la foto inicial sin avisar de nada")
+    p.add_argument("--solo", default="",
+                   help="lista separada por comas: solo estas tiendas")
+    p.add_argument("--estado", default=ESTADO,
+                   help="fichero de memoria a usar (por defecto estado.json)")
+    args = p.parse_args()
+
+    carga_env()
+    resembrar = args.resembrar
+    fichero_estado = args.estado if os.path.isabs(args.estado) \
+        else os.path.join(AQUI, args.estado)
+
     config = carga(CONFIG, CONFIG_DEFECTO)
-    estado = carga(ESTADO, ESTADO_DEFECTO)
+    estado = carga(fichero_estado, ESTADO_DEFECTO)
+
+    if args.solo:
+        pedidas = [t.strip() for t in args.solo.split(",") if t.strip()]
+        desconocidas = [t for t in pedidas if t not in tiendas.ADAPTADORES]
+        if desconocidas:
+            print("tiendas desconocidas: %s" % ", ".join(desconocidas))
+            return 2
+        config["tiendas"] = {t: (t in pedidas) for t in tiendas.ADAPTADORES}
+        # La cadencia lenta es para no machacar los sitemaps desde el cron. Una
+        # pasada manual la pide una persona: si la pide, se hace y punto.
+        config["cada_min"] = {t: 0 for t in tiendas.ADAPTADORES}
+        print("pasada manual: %s" % ", ".join(pedidas))
 
     if not avisos.hay_credenciales():
         print("AVISO: sin TELEGRAM_TOKEN / TELEGRAM_CHAT_ID. La pasada se hace "
               "igual y el estado se guarda, pero los avisos salen por pantalla.")
 
     # Los comandos se atienden siempre, incluso en pausa: si no, /reanudar
-    # no podria llegar nunca.
-    respuestas = avisos.leer_comandos(estado, config)
-    if respuestas:
-        avisos.responde(respuestas)
+    # no podria llegar nunca. En las pasadas manuales no, para que no le roben
+    # los comandos a la que corre en GitHub, que es la que manda la config.
+    if not args.solo:
+        respuestas = avisos.leer_comandos(estado, config)
+        if respuestas:
+            avisos.responde(respuestas)
 
     estado["pasadas"] = estado.get("pasadas", 0) + 1
     rodaje = config.get("rodaje_pasadas", 12)
@@ -332,8 +388,12 @@ def main() -> int:
         "ultimo_error": avisos.ULTIMO["error"],
     }
     estado["ultima_pasada"] = ahora()
-    guarda(ESTADO, estado)
-    guarda(CONFIG, config, legible=True)
+    guarda(fichero_estado, estado)
+    # En una pasada manual la config viene retocada en memoria (--solo cambia
+    # tiendas y cadencias): guardarla dejaria apagadas las demas tiendas para
+    # siempre. Solo la escribe la pasada completa.
+    if not args.solo:
+        guarda(CONFIG, config, legible=True)
     print("pasada %s | %s | %d avisos"
           % (estado["ultima_pasada"], " ".join(resumen_pasada), len(pendientes)))
     return 0

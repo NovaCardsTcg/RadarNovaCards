@@ -105,14 +105,21 @@ El bot **solo obedece a tu chat**. Si alguien más da con él, sus comandos se i
 Ninguna de estas seis webs ofrece una API pública de catálogo, así que cada una se
 ataca por donde se deja. Esto es lo que hay:
 
-| Tienda | Por dónde | Detecta | Cada |
+| Tienda | Por dónde | Detecta | Dónde corre |
 |---|---|---|---|
-| Amazon.es | buscador ordenado por novedades | nuevo, stock, precio | cada pasada |
-| El Corte Inglés | buscador | nuevo, stock, precio | cada pasada |
-| MediaMarkt | buscador | nuevo, stock, precio | cada pasada |
-| GAME | sitemap de productos | solo nuevo | 30 min |
-| Pokémon Center | sitemap de productos | solo nuevo | 30 min |
-| Carrefour | sitemap de productos | solo nuevo | 6 h |
+| Amazon.es | buscador ordenado por novedades | nuevo, stock, precio | GitHub, 24/7 |
+| GAME | sitemap de productos | solo nuevo | GitHub, 24/7 |
+| Pokémon Center | sitemap de productos | solo nuevo | GitHub, 24/7 |
+| El Corte Inglés | buscador | nuevo, stock, precio | manual, desde casa |
+| MediaMarkt | buscador | nuevo, stock, precio | manual, desde casa |
+| Carrefour | sitemap de productos | solo nuevo | manual, desde casa |
+
+**Por qué tres van a mano.** El Corte Inglés (Akamai), MediaMarkt y Carrefour
+(Cloudflare) devuelven 403 a los runners de GitHub, que salen por rangos de IP de
+centro de datos. Es bloqueo por reputación de la IP, no por cómo se pide: desde una
+conexión doméstica responden las seis sin pelear. Amazon también bloqueaba al
+principio, pero eso sí se arregló pidiendo la portada antes para coger la cookie de
+sesión; con las otras tres esa misma técnica no basta.
 
 **Por qué unas dan precio y otras no.** GAME pinta el buscador con JavaScript y lo
 protege con reCAPTCHA; Carrefour tapa buscador y API con Cloudflare (devuelven 403 y
@@ -134,17 +141,38 @@ minutos sería tirar ancho de banda sin ganar nada: las altas nuevas no van tan 
 
 ---
 
-## 5. Lo que puede salir mal
+## 5. La pasada manual (las tres bloqueadas)
 
-**Amazon puede bloquear desde GitHub.** Los runners de Actions salen por IPs de centro
-de datos, que es justo lo que Amazon filtra más. En local funciona bien y las pruebas
-salieron limpias, pero cuenta con cortes intermitentes. El radar los aguanta: reintenta,
-cambia de user-agent, y si una tienda falla sigue con las demás. Te avisa al tercer
-fallo seguido, no al primero, para que un corte suelto no te suene el móvil.
+Doble clic en **`revisar.bat`**. Consulta El Corte Inglés, MediaMarkt y Carrefour desde
+tu conexión y te avisa por el mismo bot. Tarda algo menos de dos minutos, casi todo
+Carrefour, que son 40 sitemaps.
 
-Si Amazon acaba bloqueando de forma sistemática, la salida es un **self-hosted runner**
-en tu PC (el mismo workflow, ejecutándose desde tu IP doméstica), asumiendo que solo
-avisaría con el PC encendido. Cambia `runs-on: ubuntu-latest` por `runs-on: self-hosted`.
+Antes de la primera vez, prepara las credenciales:
+
+1. Copia `.env.ejemplo` a `.env`
+2. Rellénalo con los dos mismos valores que pusiste en los secrets de GitHub
+
+El `.env` está en `.gitignore`, así que el token no sale de tu ordenador.
+
+Lleva **memoria propia** (`estado-local.json`), separada de la que mantiene GitHub. Eso
+significa que las dos mitades no se pisan: puedes lanzar la manual mientras el cron
+sigue con Amazon y las oficiales. La primera pasada siembra y no avisa de nada, como en
+GitHub; a partir de la segunda ya avisa de novedades, stock y bajadas.
+
+Si algún día quieres que esas tres se revisen solas mientras el PC está encendido, el
+mismo `.bat` vale para el Programador de tareas de Windows.
+
+---
+
+## 6. Lo que puede salir mal
+
+**Amazon corta de vez en cuando.** Devolvió 403 y 503 desde GitHub hasta que se añadió
+lo de pedir la portada primero. Aun así cuenta con cortes sueltos: el radar reintenta,
+cambia de user-agent y, si una tienda falla, sigue con las demás. Te avisa al tercer
+fallo seguido, no al primero, para que un corte pasajero no te suene el móvil.
+
+Si algún día Amazon se cerrara del todo, pasaría al grupo de las manuales: `revisar.bat`
+admite cualquier combinación (`python radar.py --solo amazon --estado estado-local.json`).
 
 **Los cron de GitHub llegan tarde.** El mínimo es 5 minutos, pero cuando hay cola los
 retrasos son de 10-20 minutos y a veces se salta una ejecución. Para novedades y
@@ -158,7 +186,7 @@ pasada escribe en la rama `estado`, y eso cuenta como actividad.
 
 ---
 
-## 6. Ficheros
+## 7. Ficheros
 
 | Fichero | Qué hace |
 |---|---|
@@ -168,6 +196,9 @@ pasada escribe en la rama `estado`, y eso cuenta como actividad.
 | `config.json` | palabras clave, tiendas activas, umbrales |
 | `estado.json` | memoria entre pasadas (no está en `main`, ver abajo) |
 | `.github/workflows/radar.yml` | el cron de GitHub Actions |
+| `revisar.bat` | pasada manual de las tres tiendas que bloquean a GitHub |
+| `.env` | credenciales para las pasadas desde casa (no se sube) |
+| `estado-local.json` | memoria de la pasada manual (no se sube) |
 
 El estado vive en una **rama huérfana llamada `estado`**, que se reescribe entera con un
 único commit en cada pasada. Así el historial de `main` no se llena de 144 commits
@@ -176,7 +207,7 @@ permite que los cambios que haces por Telegram sobrevivan de una pasada a la sig
 
 ---
 
-## 7. Probarlo en local
+## 8. Probarlo en local
 
 ```bash
 pip install -r requirements.txt

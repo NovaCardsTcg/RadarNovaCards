@@ -26,10 +26,10 @@
   "rodaje_pasadas": 12,
   "tiendas": {
     "amazon": true,
-    "carrefour": true,
-    "eci": true,
+    "carrefour": false,
+    "eci": false,
     "game": true,
-    "mediamarkt": true,
+    "mediamarkt": false,
     "pokemoncenter": true
   }
 }
