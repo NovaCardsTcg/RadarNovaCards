@@ -94,6 +94,7 @@ mucho un ciclo en aplicarse.
 /tienda amazon off   encender o apagar una tienda
 /precio 5            avisar solo si el precio baja un 5% o más
 /max 15              máximo de avisos por ciclo
+/vendedor amazon     en Amazon, solo lo que vende Amazon
 /vigilar <url>       vigilar el stock de un producto concreto
 /dejar <url>         quitarlo de la lista
 /pausa  /reanudar    dejar de avisar (sigue tomando nota) y volver
@@ -145,8 +146,15 @@ casaba con "escar**lata**" (los juegos de Switch) y con "p**lata**forma" (los
 auriculares), y "sobre" casaba con la preposición: *"despertador pokemon bulbasaur
 **sobre** pokeball"*. Por eso el término es `sobre de` y no `sobre`.
 
-Resultado: Amazon 205 de 282, El Corte Inglés 8 de 10, GAME 45 de 409 y Carrefour 39 de
-996. En total 297 productos, todos TCG.
+**Solo lo que vende Amazon.** En Amazon la mitad del catálogo es reventa de terceros.
+`amazon_vendedores` en `config.json` restringe la búsqueda usando la faceta de vendedor
+del propio buscador de Amazon (`rh=p_6:<id>`), no adivinando el vendedor desde la ficha:
+el bloque de la caja de compra cambia de maquetación según el producto y no es de fiar.
+Se cambia desde el móvil con `/vendedor amazon`, `/vendedor global` (incluye Amazon UK y
+US) o `/vendedor todos`.
+
+Resultado con los dos filtros: Amazon 89 de 283, El Corte Inglés 8 de 10, GAME 45 de 409
+y Carrefour 39 de 996.
 
 **Por qué unas dan precio y otras no.** GAME pinta el buscador con JavaScript y lo
 protege con reCAPTCHA; Carrefour tapa buscador y API con Cloudflare (devuelven 403 y

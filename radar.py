@@ -108,6 +108,7 @@ CONFIG_DEFECTO = {
     "bajada_min_eur": 1.0,
     "max_avisos": 15,
     "rodaje_pasadas": 12,
+    "amazon_vendedores": ["amazon.es"],
     "fichas_por_pasada": 25,
     "pausado": False,
 }
@@ -473,7 +474,11 @@ def main() -> int:
         fn, da_precio = tiendas.ADAPTADORES[tienda]
         try:
             t0 = time.time()
-            productos = fn(config["palabras"])
+            # Amazon admite filtrar por vendedor con la faceta de su buscador.
+            extra = {}
+            if tienda == "amazon" and config.get("amazon_vendedores"):
+                extra["vendedores"] = config["amazon_vendedores"]
+            productos = fn(config["palabras"], **extra)
             productos = [p for p in productos if relevante(p, config, da_precio)]
             estado.setdefault("ultima_tienda", {})[tienda] = time.time()
             msg = salud_tienda(tienda, estado, ok=True)

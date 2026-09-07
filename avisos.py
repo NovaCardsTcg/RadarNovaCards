@@ -118,6 +118,7 @@ AYUDA = """<b>Radar Pokemon</b>
 /tienda amazon off - encender o apagar una tienda
 /precio 5 - avisar solo si el precio baja un 5% o mas
 /max 15 - maximo de avisos por ciclo
+/vendedor amazon - en Amazon, solo lo que vende Amazon
 /vigilar &lt;url&gt; - vigilar el stock de un producto concreto
 /dejar &lt;url&gt; - dejar de vigilarlo
 /pausa - dejar de avisar (sigue tomando nota)
@@ -226,6 +227,20 @@ def _ejecuta(texto: str, config: dict, estado: dict) -> str:
         enviar("Prueba del radar. Si ves esto, los avisos llegan bien.",
                boton=("Abrir Amazon", "https://www.amazon.es/s?k=pokemon"))
         return ""
+
+    if cmd == "vendedor":
+        opciones = {"amazon": ["amazon.es"], "todos": [],
+                    "global": ["amazon.es", "amazon.uk", "amazon.us"]}
+        if arg.lower() not in opciones:
+            actual = config.get("amazon_vendedores") or []
+            return ("En Amazon ahora mismo: <b>%s</b>\n\n"
+                    "/vendedor amazon - solo lo vendido por Amazon.es\n"
+                    "/vendedor global - Amazon.es, UK y US\n"
+                    "/vendedor todos - tambien vendedores externos"
+                    % (", ".join(actual) if actual else "todos los vendedores"))
+        config["amazon_vendedores"] = opciones[arg.lower()]
+        return "En Amazon vigilo: <b>%s</b>" % (
+            ", ".join(config["amazon_vendedores"]) or "todos los vendedores")
 
     if cmd in ("vigilar", "dejar"):
         producto = tiendas.desde_url(arg)

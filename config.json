@@ -1,4 +1,7 @@
 {
+  "amazon_vendedores": [
+    "amazon.es"
+  ],
   "bajada_min_eur": 1.0,
   "bajada_min_pct": 5.0,
   "cada_min": {

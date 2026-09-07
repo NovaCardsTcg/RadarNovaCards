@@ -235,15 +235,36 @@ def normaliza(t: str) -> str:
 # o a cambio de maquetacion.
 # --------------------------------------------------------------------------
 
-def amazon(palabras: list[str], paginas: int = 2) -> list[Producto]:
+# Identificadores de vendedor de Amazon, sacados de las facetas del panel
+# lateral del propio buscador (los enlaces "p_6:..." de la columna Vendedor).
+VENDEDORES_AMAZON = {
+    "amazon.es": "A1AT7YVPFBWXBL",
+    "amazon.uk": "A2EL6K6KDM9FO1",
+    "amazon.us": "A8ZZTUQ8GZK8C",
+}
+
+
+def amazon(palabras: list[str], paginas: int = 2,
+           vendedores: list[str] | None = None) -> list[Producto]:
+    """Busqueda en Amazon.es, opcionalmente restringida a ciertos vendedores.
+
+    Filtrar por vendedor se hace con la faceta del propio buscador de Amazon
+    (rh=p_6:<id>), no adivinando el vendedor desde la ficha: el bloque de la
+    caja de compra cambia de maquetacion segun el producto y no es de fiar.
+    Buscando "pokemon cartas", el filtro de Amazon.es deja 18 resultados de 48.
+    """
     s = _sesion("https://www.amazon.es/")
     out: dict[str, Producto] = {}
     pista = ""
+    filtro = ""
+    if vendedores:
+        ids = [VENDEDORES_AMAZON.get(v, v) for v in vendedores]
+        filtro = "&rh=" + quote_plus("p_6:" + "|".join(ids))
     for palabra in palabras:
         for pag in range(1, paginas + 1):
             # s=date-desc-rank es el orden "novedades": lo recien listado sale arriba.
-            url = ("https://www.amazon.es/s?k=%s&s=date-desc-rank&page=%d"
-                   % (quote_plus(palabra), pag))
+            url = ("https://www.amazon.es/s?k=%s&s=date-desc-rank&page=%d%s"
+                   % (quote_plus(palabra), pag, filtro))
             r = _get(s, url)
             # Amazon casi nunca responde 403: cuando no le gustas devuelve un 200
             # con una pagina de interstitial. Por eso hay que mirar el contenido.
