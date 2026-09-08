@@ -7,9 +7,8 @@ Avisa de tres cosas:
 
 - **NUEVO** — una referencia que no había visto nunca en esa tienda.
 - **VUELVE EL STOCK** — un producto conocido pasa de agotado a comprable.
-- **BAJA DE PRECIO** — cae respecto a la última vez (por defecto, un 5% y 1 € como mínimo).
-  Antes de avisarte se abre la ficha del producto para confirmar que el precio es
-  ese de verdad; ver la sección 6.
+- **BAJA DE PRECIO** — cae respecto a la última vez (por defecto, un 5% y 1 € como mínimo)
+  y **sigue caída en la pasada siguiente**; ver la sección 7.
 
 ---
 
