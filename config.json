@@ -66,6 +66,7 @@
   ],
   "exigir_palabra": true,
   "fichas_por_pasada": 25,
+  "horas_candidato": 24,
   "horas_silencio": 12,
   "max_avisos": 15,
   "palabras": [

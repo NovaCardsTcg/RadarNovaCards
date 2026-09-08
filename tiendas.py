@@ -661,6 +661,10 @@ def _lee_ficha(p: Producto) -> dict:
         return {"precio": precio, "disponible": disponible,
                 "titulo": titulo, "imagen": meta("og:image")}
     except (TiendaCaida,) + ERRORES_RED:
+        # La sesion se tira: si la tienda ha empezado a bloquear, seguir con
+        # las mismas cookies y el mismo agente condena a ciegas al resto de
+        # fichas de la pasada. La siguiente estrena sesion y portada.
+        _SESIONES.pop(p.tienda, None)
         return {}
 
 

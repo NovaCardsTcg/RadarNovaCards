@@ -114,6 +114,7 @@ CONFIG_DEFECTO = {
     "fichas_por_pasada": 25,
     "horas_silencio": 12,
     "pasadas_confirmar": 2,
+    "horas_candidato": 24,
     "pausado": False,
 }
 
@@ -258,8 +259,9 @@ def confirma_bajadas(pendientes: list[tuple], config: dict, estado: dict) -> lis
         no el del buscador, para que el mensaje y la pagina digan lo mismo.
       - Si la ficha NO la confirma, no se avisa y se corrige la memoria con el
         precio de la ficha.
-      - Si la ficha no se puede leer, tampoco se avisa, y ademas se devuelve a
-        la memoria el precio anterior.
+      - Si la ficha no se puede leer, el aviso sale igual y lo dice: a estas
+        alturas la bajada ya viene avalada por haber aguantado varias pasadas,
+        que es una senal mas fuerte que una sola lectura del listado.
 
     Ese ultimo caso es el que provocaba el bucle de avisos repetidos. Antes se
     avisaba "con reserva" y se dejaba en memoria el precio sin verificar, asi
@@ -278,9 +280,13 @@ def confirma_bajadas(pendientes: list[tuple], config: dict, estado: dict) -> lis
             continue
 
         if comprobadas >= MAX_COMPROBACIONES:
-            estado["productos"][p.clave] = list(ant)
-            print("[%s] bajada aplazada, tope de comprobaciones: %s"
-                  % (p.tienda, p.titulo[:50]))
+            # Se acabo el presupuesto de fichas, pero la bajada ya viene
+            # confirmada por persistencia: se manda sin el contraste extra.
+            # Antes se aplazaba reescribiendo la memoria con [base, None], que
+            # ademas de tirar la confirmacion ganada borraba el stock conocido
+            # y dejaba muerto el aviso de "vuelve el stock" de ese producto.
+            p.sin_confirmar = True
+            salida.append((tipo, p, ant))
             continue
 
         comprobadas += 1
@@ -326,28 +332,58 @@ def revisa_bajada(p, base, config: dict, estado: dict):
     cands = estado.setdefault("candidatos", {})
     cand = cands.get(p.clave)
 
+    hacen_falta = max(1, config.get("pasadas_confirmar", 2))
+
+    # Un candidato caducado se tira. Con el listado de Amazon rotando, un
+    # articulo puede desaparecer de los resultados y volver dias despues; sin
+    # caducidad, confirmaria una bajada contra una referencia rancia.
+    horas_cand = config.get("horas_candidato", 24)
+    if cand and time.time() - cand.get("visto", 0) > horas_cand * 3600:
+        print("[%s] candidato caducado tras %d h, se reinicia: %s"
+              % (p.tienda, horas_cand, p.titulo[:44]))
+        del cands[p.clave]
+        cand = None
+
+    def confirma(base_original):
+        estado["productos"][p.clave] = [p.precio, p.disponible]
+        return ("precio", p, [base_original, p.disponible])
+
     if cand:
         # Sigue igual de bajo, o mas: la bajada se sostiene.
         if p.precio <= cand["precio"] * 1.005:
             cand["pasadas"] += 1
             cand["precio"] = min(cand["precio"], p.precio)
-            if cand["pasadas"] >= config.get("pasadas_confirmar", 2):
-                base_original = cand["base"]
+            cand["visto"] = time.time()
+            if cand["pasadas"] >= hacen_falta:
+                base_original = cand.pop("base")
                 del cands[p.clave]
-                estado["productos"][p.clave] = [p.precio, p.disponible]
-                return ("precio", p, [base_original, None])
+                return confirma(base_original)
             print("[%s] bajada en observacion (%d/%d): %s"
-                  % (p.tienda, cand["pasadas"], config.get("pasadas_confirmar", 2),
-                     p.titulo[:44]))
+                  % (p.tienda, cand["pasadas"], hacen_falta, p.titulo[:44]))
             return None
-        # Ha vuelto a subir: era ruido del listado.
-        print("[%s] bajada descartada, el precio ha vuelto a %.2f: %s"
-              % (p.tienda, p.precio, p.titulo[:44]))
+
+        # Ha subido respecto al minimo observado, pero puede seguir por debajo
+        # de la referencia original. Sin volver a mirarlo contra la base, una
+        # bajada de 52,99 a 46,99 que pasara antes por 43,99 se perdia para
+        # siempre: el candidato se descartaba y 46,99 quedaba de referencia.
+        base_original = cand["base"]
         del cands[p.clave]
-        return None
+        if baja_bastante(base_original, p.precio, config):
+            print("[%s] sube a %.2f pero sigue por debajo de %.2f, se reinicia "
+                  "la observacion: %s"
+                  % (p.tienda, p.precio, base_original, p.titulo[:44]))
+            base = base_original
+        else:
+            print("[%s] bajada descartada, el precio ha vuelto a %.2f: %s"
+                  % (p.tienda, p.precio, p.titulo[:44]))
+            return None
 
     if baja_bastante(base, p.precio, config):
-        cands[p.clave] = {"base": base, "precio": p.precio, "pasadas": 1}
+        # Con pasadas_confirmar=1 se avisa ya, sin esperar a la siguiente.
+        if hacen_falta <= 1:
+            return confirma(base)
+        cands[p.clave] = {"base": base, "precio": p.precio, "pasadas": 1,
+                          "visto": time.time()}
         print("[%s] posible bajada %.2f -> %.2f, a confirmar en la siguiente "
               "pasada: %s" % (p.tienda, base, p.precio, p.titulo[:44]))
     return None
@@ -373,13 +409,22 @@ def quita_repetidos(pendientes: list[tuple], config: dict, estado: dict) -> list
             print("[%s] %s silenciado (avisado hace %.1f h): %s"
                   % (p.tienda, tipo, (ahora_ts - ultimo) / 3600, p.titulo[:44]))
             continue
-        registro[marca] = ahora_ts
         salida.append((tipo, p, ant))
 
     # El registro no puede crecer para siempre: fuera lo caducado.
     limite = ahora_ts - horas * 3600
     estado["avisado"] = {k: v for k, v in registro.items() if v >= limite}
     return salida
+
+
+def sella_enviado(p, tipo: str, estado: dict):
+    """Anota que este aviso SI ha salido, para que el silencio cuente desde ahi.
+
+    Se sella al enviar y no al decidir: si el aviso se cae por el tope de
+    max_avisos o porque Telegram falla, no se ha enterado nadie y no puede
+    contar como avisado.
+    """
+    estado.setdefault("avisado", {})["%s|%s" % (p.clave, tipo)] = time.time()
 
 
 def primera_vez_sembrando(tienda: str, estado: dict, resembrar: bool) -> bool:
@@ -650,6 +695,11 @@ def main() -> int:
         if primera:
             # Primera foto de la tienda: se guarda todo y no se avisa de nada.
             # Sin esto, el estreno serian miles de mensajes de golpe.
+            # Los candidatos que haya creado compara() en esta pasada tambien
+            # sobran: si no, --resembrar prometeria no avisar y en la pasada
+            # siguiente soltaria de golpe todas las bajadas que anoto.
+            estado["candidatos"] = {k: v for k, v in estado.get("candidatos", {}).items()
+                                    if not k.startswith(tienda + ":")}
             estado["sembrado"][tienda] = True
             avisos_sistema.append(
                 "<b>%s</b> sembrada: %d productos anotados. A partir de ahora "
@@ -689,6 +739,7 @@ def main() -> int:
     for tipo, p, ant in pendientes[:tope]:
         texto, boton = formatea(tipo, p, ant, config)
         avisos.enviar(texto, imagen=p.imagen, boton=boton)
+        sella_enviado(p, tipo, estado)
         time.sleep(0.5)
 
     if len(pendientes) > tope:
