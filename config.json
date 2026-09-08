@@ -78,6 +78,7 @@
   ],
   "pasadas_confirmar": 2,
   "pausado": false,
+  "reporte_cada_h": 24,
   "rodaje_pasadas": 12,
   "tematica": [
     "cartas",

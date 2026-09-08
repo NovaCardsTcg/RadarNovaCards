@@ -119,6 +119,8 @@ AYUDA = """<b>Radar Pokemon</b>
 /precio 5 - avisar solo si el precio baja un 5% o mas
 /max 15 - maximo de avisos por ciclo
 /vendedor amazon - en Amazon, solo lo que vende Amazon
+/reporte - resumen de lo que ha pasado
+/reportes 24 - mandarmelo solo cada 24 h (off para quitarlo)
 /vigilar &lt;url&gt; - vigilar el stock de un producto concreto
 /dejar &lt;url&gt; - dejar de vigilarlo
 /pausa - dejar de avisar (sigue tomando nota)
@@ -258,6 +260,24 @@ def _ejecuta(texto: str, config: dict, estado: dict) -> str:
         return ("Vigilando <b>%s</b>\nTe aviso cuando pase de agotado a comprable.\n"
                 "En la lista hay %d productos." % (esc(producto.titulo), len(vig)))
 
+    if cmd == "reporte":
+        return reporte(estado, config)
+
+    if cmd == "reportes":
+        if arg.lower() in ("off", "no", "0"):
+            config["reporte_cada_h"] = 0
+            return "Reportes automaticos apagados. Siempre te queda /reporte."
+        try:
+            config["reporte_cada_h"] = max(1, int(arg))
+        except ValueError:
+            actual = config.get("reporte_cada_h", 0)
+            return ("Reportes automaticos: <b>%s</b>\n\n"
+                    "/reportes 24 - uno al dia\n"
+                    "/reportes 12 - manana y noche\n"
+                    "/reportes off - ninguno"
+                    % ("cada %d h" % actual if actual else "apagados"))
+        return "Te mando un reporte cada <b>%d h</b>." % config["reporte_cada_h"]
+
     if cmd == "estado":
         return resumen(estado, config)
 
@@ -294,6 +314,61 @@ def resumen(estado: dict, config: dict) -> str:
            config.get("max_avisos", 15),
            estado.get("ultima_pasada", "nunca"))
     )
+
+
+def reporte(estado: dict, config: dict) -> str:
+    """Resumen de lo que ha pasado desde el reporte anterior.
+
+    El radar normal solo habla cuando hay novedades, asi que su silencio es
+    ambiguo: no se distingue "no ha pasado nada" de "lleva media noche roto".
+    El reporte es lo que resuelve eso, y por eso lleva siempre la salud de las
+    tiendas aunque no haya nada que contar.
+    """
+    c = estado.get("contadores", {})
+    desde = estado.get("reporte_desde", "")
+    vig = estado.get("vigilando", {})
+    agotados = sum(1 for v in vig.values() if v.get("disp") is False)
+
+    lineas = ["<b>Reporte del radar</b>"]
+    if desde:
+        lineas.append("<i>desde %s</i>" % esc(desde))
+    lineas.append("")
+
+    total = c.get("nuevo", 0) + c.get("stock", 0) + c.get("precio", 0)
+    if total:
+        lineas.append("<b>%d avisos</b> en este periodo:" % total)
+        for clave, etiqueta in (("nuevo", "productos nuevos"),
+                                ("stock", "vuelven a estar disponibles"),
+                                ("precio", "bajadas de precio")):
+            if c.get(clave):
+                lineas.append("  %d %s" % (c[clave], etiqueta))
+    else:
+        lineas.append("Sin novedades en este periodo.")
+
+    destacados = c.get("destacados") or []
+    if destacados:
+        lineas.append("")
+        lineas.append("<b>Lo mas interesante</b>")
+        for d in destacados[:5]:
+            lineas.append("  " + esc(d))
+
+    lineas.append("")
+    lineas.append("<b>Vigilando</b>")
+    # El recuento de la ultima pasada, no el tamano de la memoria: ahi quedan
+    # restos de cuando los filtros eran mas anchos.
+    por_tienda = estado.get("recuento", {})
+    for t, act in config["tiendas"].items():
+        if not act:
+            continue
+        salud = estado.get("salud", {}).get(t, {})
+        marca = " (no responde)" if salud.get("fallos") else ""
+        lineas.append("  %s: %d%s" % (t, por_tienda.get(t, 0), marca))
+    lineas.append("  stock vigilado: %d, de ellos %d agotados" % (len(vig), agotados))
+
+    pend = len(estado.get("candidatos", {}))
+    if pend:
+        lineas.append("  bajadas en observacion: %d" % pend)
+    return "\n".join(lineas)
 
 
 def responde(textos: list[str]):

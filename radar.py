@@ -115,6 +115,7 @@ CONFIG_DEFECTO = {
     "horas_silencio": 12,
     "pasadas_confirmar": 2,
     "horas_candidato": 24,
+    "reporte_cada_h": 24,
     "pausado": False,
 }
 
@@ -126,6 +127,10 @@ ESTADO_DEFECTO = {
     "vigilando": {},      # clave -> {url, titulo, disp, visto} para el stock
     "candidatos": {},     # clave -> {base, precio, pasadas} de bajadas a confirmar
     "avisado": {},        # "clave|tipo" -> epoch del ultimo aviso, para el silencio
+    "contadores": {},     # avisos acumulados desde el ultimo reporte
+    "recuento": {},       # tienda -> productos que pasaron el filtro en la ultima pasada
+    "reporte_desde": "",  # cuando empezo el periodo que cubre el proximo reporte
+    "ultimo_reporte": 0,
     "pasadas": 0,         # para saber cuando termina el rodaje
     "aviso_rodaje": False,
     "telegram_offset": 0,
@@ -417,6 +422,19 @@ def quita_repetidos(pendientes: list[tuple], config: dict, estado: dict) -> list
     return salida
 
 
+def apunta_para_reporte(p, tipo: str, config: dict, estado: dict):
+    """Suma el aviso al recuento del proximo reporte."""
+    c = estado.setdefault("contadores", {})
+    c[tipo] = c.get(tipo, 0) + 1
+    # Lo destacado se guarda con nombre: en el reporte es lo unico que se lee
+    # de verdad, el resto son numeros.
+    if destacado(p, config):
+        muestras = c.setdefault("destacados", [])
+        if len(muestras) < 10:
+            etiqueta = {"nuevo": "nuevo", "stock": "vuelve", "precio": "baja"}[tipo]
+            muestras.append("%s - %s" % (etiqueta, p.titulo[:52]))
+
+
 def sella_enviado(p, tipo: str, estado: dict):
     """Anota que este aviso SI ha salido, para que el silencio cuente desde ahi.
 
@@ -689,6 +707,10 @@ def main() -> int:
         primera = not estado["sembrado"].get(tienda) or resembrar
         sucesos = compara(tienda, productos, config, estado, en_rodaje)
         resumen_pasada.append("%s:%d" % (tienda, len(productos)))
+        # Lo que de verdad se vigila hoy. En "productos" quedan restos de
+        # cuando los filtros eran mas anchos (Amazon acumulo 506 entradas que
+        # ya no pasan el filtro), y contar esos en el reporte seria mentir.
+        estado.setdefault("recuento", {})[tienda] = len(productos)
         print("[%s] %d productos, %d sucesos, %.1fs"
               % (tienda, len(productos), len(sucesos), time.time() - t0))
 
@@ -740,6 +762,7 @@ def main() -> int:
         texto, boton = formatea(tipo, p, ant, config)
         avisos.enviar(texto, imagen=p.imagen, boton=boton)
         sella_enviado(p, tipo, estado)
+        apunta_para_reporte(p, tipo, config, estado)
         time.sleep(0.5)
 
     if len(pendientes) > tope:
@@ -767,6 +790,14 @@ def main() -> int:
         "enviados_ok": avisos.ULTIMO["ok"],
         "ultimo_error": avisos.ULTIMO["error"],
     }
+    cada_h = config.get("reporte_cada_h", 0)
+    if cada_h and time.time() - estado.get("ultimo_reporte", 0) >= cada_h * 3600:
+        if estado.get("ultimo_reporte"):        # el primero no se manda: no cubre nada
+            avisos.enviar(avisos.reporte(estado, config), silencioso=True)
+        estado["ultimo_reporte"] = time.time()
+        estado["reporte_desde"] = ahora()
+        estado["contadores"] = {}
+
     estado["ultima_pasada"] = ahora()
     guarda(fichero_estado, estado)
     # En una pasada manual la config viene retocada en memoria (--solo cambia
