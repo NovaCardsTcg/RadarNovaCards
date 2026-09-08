@@ -112,6 +112,8 @@ CONFIG_DEFECTO = {
     "rodaje_pasadas": 12,
     "amazon_vendedores": ["amazon.es"],
     "fichas_por_pasada": 25,
+    "horas_silencio": 12,
+    "pasadas_confirmar": 2,
     "pausado": False,
 }
 
@@ -121,6 +123,8 @@ ESTADO_DEFECTO = {
     "sembrado": {},       # tienda -> true cuando ya tiene una foto inicial
     "ultima_tienda": {},  # tienda -> timestamp epoch de la ultima consulta
     "vigilando": {},      # clave -> {url, titulo, disp, visto} para el stock
+    "candidatos": {},     # clave -> {base, precio, pasadas} de bajadas a confirmar
+    "avisado": {},        # "clave|tipo" -> epoch del ultimo aviso, para el silencio
     "pasadas": 0,         # para saber cuando termina el rodaje
     "aviso_rodaje": False,
     "telegram_offset": 0,
@@ -250,25 +254,42 @@ def confirma_bajadas(pendientes: list[tuple], config: dict, estado: dict) -> lis
 
     Aqui manda la ficha, que es lo que ve la persona al pinchar:
 
-      - Si la ficha no confirma la bajada, no se avisa, y ademas se corrige la
-        memoria con el precio de la ficha. Sin eso el precio malo se quedaria
-        de referencia y volveria a disparar el mismo aviso falso en bucle.
-      - Si la confirma, el aviso lleva el precio de la ficha, no el del
-        buscador, para que el mensaje y la pagina digan lo mismo.
-      - Si la ficha no se puede leer, se avisa igual pero diciendolo: mejor un
-        aviso con una reserva que perder una bajada real.
+      - Si la ficha confirma la bajada, el aviso lleva el precio de la ficha,
+        no el del buscador, para que el mensaje y la pagina digan lo mismo.
+      - Si la ficha NO la confirma, no se avisa y se corrige la memoria con el
+        precio de la ficha.
+      - Si la ficha no se puede leer, tampoco se avisa, y ademas se devuelve a
+        la memoria el precio anterior.
+
+    Ese ultimo caso es el que provocaba el bucle de avisos repetidos. Antes se
+    avisaba "con reserva" y se dejaba en memoria el precio sin verificar, asi
+    que un articulo cuyo listado alterna entre dos precios (una ETB que unas
+    veces sale a 52,99 y otras a 43,99) disparaba el mismo -17% una pasada si y
+    otra no, indefinidamente. Al conservar la referencia anterior la oscilacion
+    deja de morder, y sin confirmacion no sale ningun aviso: un aviso de precio
+    que no se puede comprobar no vale nada, porque el precio es justo lo unico
+    que estas afirmando.
     """
     salida = []
     comprobadas = 0
     for tipo, p, ant in pendientes:
-        if tipo != "precio" or comprobadas >= MAX_COMPROBACIONES:
+        if tipo != "precio":
             salida.append((tipo, p, ant))
+            continue
+
+        if comprobadas >= MAX_COMPROBACIONES:
+            estado["productos"][p.clave] = list(ant)
+            print("[%s] bajada aplazada, tope de comprobaciones: %s"
+                  % (p.tienda, p.titulo[:50]))
             continue
 
         comprobadas += 1
         real = tiendas.precio_ficha(p)
 
         if real is None:
+            # No se ha podido leer, pero la bajada ya venia avalada por haber
+            # aguantado varias pasadas: se avisa diciendo que no se ha podido
+            # contrastar contra la ficha.
             p.sin_confirmar = True
             salida.append((tipo, p, ant))
             continue
@@ -281,6 +302,83 @@ def confirma_bajadas(pendientes: list[tuple], config: dict, estado: dict) -> lis
 
         p.precio = real
         salida.append((tipo, p, ant))
+    return salida
+
+
+def revisa_bajada(p, base, config: dict, estado: dict):
+    """Exige que una bajada aguante dos pasadas antes de darla por buena.
+
+    Es la defensa contra el bucle de avisos falsos. El listado de Amazon
+    alterna a veces entre dos precios para el mismo articulo (una ETB que unas
+    veces sale a 52,99 y otras a 43,99), y con la comparacion simple eso
+    disparaba el mismo -17% una pasada si y otra no, para siempre.
+
+    La clave esta en que, mientras una bajada esta a medio confirmar, la
+    referencia NO se mueve. Asi la oscilacion no puede morder: si el precio
+    vuelve a subir, se descarta el candidato y no ha pasado nada; si sigue
+    abajo en la pasada siguiente, es que la bajada es de verdad.
+
+    Se eligio esto en vez de fiarlo todo a abrir la ficha porque la ficha de
+    Amazon no siempre se deja leer (llega a fallar 8 de 8 cuando la IP esta
+    limitada), y un radar que depende de eso se queda mudo sin avisar de que
+    esta mudo. Aqui no hace falta ni una peticion extra.
+    """
+    cands = estado.setdefault("candidatos", {})
+    cand = cands.get(p.clave)
+
+    if cand:
+        # Sigue igual de bajo, o mas: la bajada se sostiene.
+        if p.precio <= cand["precio"] * 1.005:
+            cand["pasadas"] += 1
+            cand["precio"] = min(cand["precio"], p.precio)
+            if cand["pasadas"] >= config.get("pasadas_confirmar", 2):
+                base_original = cand["base"]
+                del cands[p.clave]
+                estado["productos"][p.clave] = [p.precio, p.disponible]
+                return ("precio", p, [base_original, None])
+            print("[%s] bajada en observacion (%d/%d): %s"
+                  % (p.tienda, cand["pasadas"], config.get("pasadas_confirmar", 2),
+                     p.titulo[:44]))
+            return None
+        # Ha vuelto a subir: era ruido del listado.
+        print("[%s] bajada descartada, el precio ha vuelto a %.2f: %s"
+              % (p.tienda, p.precio, p.titulo[:44]))
+        del cands[p.clave]
+        return None
+
+    if baja_bastante(base, p.precio, config):
+        cands[p.clave] = {"base": base, "precio": p.precio, "pasadas": 1}
+        print("[%s] posible bajada %.2f -> %.2f, a confirmar en la siguiente "
+              "pasada: %s" % (p.tienda, base, p.precio, p.titulo[:44]))
+    return None
+
+
+def quita_repetidos(pendientes: list[tuple], config: dict, estado: dict) -> list[tuple]:
+    """Silencia el mismo aviso para el mismo producto durante unas horas.
+
+    Es el cinturon ademas de los tirantes. Aunque una bajada sea real y este
+    confirmada, si el precio va y viene no hace falta contarlo cada diez
+    minutos: con saberlo una vez al dia sobra para decidir si comprar.
+    """
+    horas = config.get("horas_silencio", 12)
+    if not horas:
+        return pendientes
+    registro = estado.setdefault("avisado", {})
+    ahora_ts = time.time()
+    salida = []
+    for tipo, p, ant in pendientes:
+        marca = "%s|%s" % (p.clave, tipo)
+        ultimo = registro.get(marca, 0)
+        if ahora_ts - ultimo < horas * 3600:
+            print("[%s] %s silenciado (avisado hace %.1f h): %s"
+                  % (p.tienda, tipo, (ahora_ts - ultimo) / 3600, p.titulo[:44]))
+            continue
+        registro[marca] = ahora_ts
+        salida.append((tipo, p, ant))
+
+    # El registro no puede crecer para siempre: fuera lo caducado.
+    limite = ahora_ts - horas * 3600
+    estado["avisado"] = {k: v for k, v in registro.items() if v >= limite}
     return salida
 
 
@@ -384,8 +482,14 @@ def compara(tienda: str, productos: list, config: dict, estado: dict,
             pre_precio, pre_disp = (anterior + [None, None])[:2]
             if pre_disp is False and p.disponible is True:
                 sucesos.append(("stock", p, anterior))
-            elif baja_bastante(pre_precio, p.precio, config):
-                sucesos.append(("precio", p, anterior))
+            elif p.precio is not None:
+                suceso = revisa_bajada(p, pre_precio, config, estado)
+                if suceso:
+                    sucesos.append(suceso)
+                # La bajada a medio confirmar no toca la referencia: de eso se
+                # encarga revisa_bajada. Saltamos la actualizacion de abajo.
+                if p.clave in estado.get("candidatos", {}):
+                    continue
 
         memoria[p.clave] = [p.precio, p.disponible]
 
@@ -573,6 +677,7 @@ def main() -> int:
         pendientes = []
 
     pendientes = confirma_bajadas(pendientes, config, estado)
+    pendientes = quita_repetidos(pendientes, config, estado)
 
     # Primero lo destacado, luego lo nuevo, el stock y las bajadas: si hay
     # recorte por el tope de avisos, que caiga lo menos urgente y nunca lo que

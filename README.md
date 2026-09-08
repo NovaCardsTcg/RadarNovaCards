@@ -233,7 +233,33 @@ Schema.org; GAME no, ahí la señal es si existe el botón de añadir a la cesta
 
 ---
 
-## 7. Por qué las bajadas se confirman en la ficha
+## 7. Por qué una bajada tiene que aguantar dos pasadas
+
+El listado de Amazon alterna a veces entre dos precios para el mismo artículo: una Caja
+de Entrenador Élite que unas veces sale a 52,99 € y otras a 43,99 €. Comparando sin más
+contra el precio guardado, eso disparaba el mismo −17% una pasada sí y otra no, para
+siempre, y al pinchar el aviso el precio era el de siempre. Es lo que producía los
+avisos repetidos de los mismos productos con un descuento que no existía.
+
+Ahora una bajada tiene que **seguir ahí en la pasada siguiente** para que se avise. Lo
+que hace que funcione es que, mientras está a medio confirmar, **la referencia no se
+mueve**: si el precio vuelve a subir se descarta el candidato y no ha pasado nada. Con
+el precio oscilando seis pasadas, los avisos pasan de tres a cero; una bajada real y
+sostenida sigue avisando, en la segunda pasada.
+
+Se eligió esto en vez de fiarlo todo a abrir la ficha del producto porque la ficha de
+Amazon no siempre se deja leer — con la IP limitada llega a fallar 8 de 8 —, y un radar
+que dependa de eso se queda mudo sin avisar de que está mudo. Este método no cuesta ni
+una petición extra. La ficha se sigue abriendo como comprobación adicional: si se puede
+leer y desmiente la bajada, el aviso se cae; si no se puede leer, el aviso sale igual
+porque la persistencia ya lo avala, y el mensaje lo dice.
+
+Encima de todo eso hay un **silencio de 12 horas** por producto y tipo de aviso: aunque
+una bajada sea real, no hace falta contarla cada diez minutos.
+
+---
+
+## 8. Por qué las bajadas se confirman en la ficha
 
 El precio de la tarjeta del buscador y el de la ficha del producto no siempre
 coinciden. Pasa sobre todo en Amazon: ofertas de otros vendedores que ganan y
@@ -256,7 +282,7 @@ comprobaciones por pasada.
 
 ---
 
-## 8. Lo que puede salir mal
+## 9. Lo que puede salir mal
 
 **Amazon corta de vez en cuando.** Devolvió 403 y 503 desde GitHub hasta que se añadió
 lo de pedir la portada primero. Aun así cuenta con cortes sueltos: el radar reintenta,
@@ -278,7 +304,7 @@ pasada escribe en la rama `estado`, y eso cuenta como actividad.
 
 ---
 
-## 9. Ficheros
+## 10. Ficheros
 
 | Fichero | Qué hace |
 |---|---|
@@ -299,7 +325,7 @@ permite que los cambios que haces por Telegram sobrevivan de una pasada a la sig
 
 ---
 
-## 10. Probarlo en local
+## 11. Probarlo en local
 
 ```bash
 pip install -r requirements.txt

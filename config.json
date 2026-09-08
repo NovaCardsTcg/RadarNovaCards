@@ -66,6 +66,7 @@
   ],
   "exigir_palabra": true,
   "fichas_por_pasada": 25,
+  "horas_silencio": 12,
   "max_avisos": 15,
   "palabras": [
     "pokemon",
@@ -74,6 +75,7 @@
     "pokemon 30 aniversario",
     "pokemon 30th"
   ],
+  "pasadas_confirmar": 2,
   "pausado": false,
   "rodaje_pasadas": 12,
   "tematica": [

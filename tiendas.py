@@ -570,6 +570,26 @@ STOCK_EN_FICHA = {
 }
 
 
+_SESIONES: dict[str, object] = {}
+
+
+def _sesion_de(tienda: str):
+    """Una sola sesion por tienda, reutilizada mientras dure la pasada.
+
+    Abrir sesion nueva para cada ficha significaba dos peticiones por producto
+    (portada + ficha) y tirar las cookies recien conseguidas. Al repasar el
+    stock de 25 productos eso son 50 peticiones en vez de 26, y Amazon empezaba
+    a responder 503 a la tercera o cuarta. Reutilizando la sesion se pide la
+    portada una vez y las cookies duran toda la pasada, que es exactamente lo
+    que hace un navegador.
+    """
+    s = _SESIONES.get(tienda)
+    if s is None:
+        s = _sesion(_PORTADAS.get(tienda))
+        _SESIONES[tienda] = s
+    return s
+
+
 def _lee_ficha(p: Producto) -> dict:
     """Abre la ficha UNA vez y saca de ella todo lo que se pueda.
 
@@ -583,7 +603,7 @@ def _lee_ficha(p: Producto) -> dict:
     precio" o "agotado": quien llama decide que hacer con la duda.
     """
     try:
-        s = _sesion(_PORTADAS.get(p.tienda))
+        s = _sesion_de(p.tienda)
         r = _get(s, p.url)
         sopa = BeautifulSoup(r.text, "lxml")
 
