@@ -245,6 +245,18 @@ def baja_bastante(antes, ahora, config: dict) -> bool:
     """
     if ahora is None or not antes or ahora >= antes:
         return False
+
+    # Una "bajada" que cae justo en el precio sin IVA no es una bajada, es el
+    # mismo precio contado de otra manera. Amazon sirve a veces la variante
+    # para empresas y de ahi salieron quince avisos falsos de golpe, todos con
+    # el mismo 17%: 43,79 x 1,21 = 52,99 exacto. Se descarta por aritmetica
+    # porque una oferta real que caiga al centimo en ese cociente es rarisima,
+    # y perder una asi es mucho mas barato que repetir aquello.
+    if abs(antes / tiendas.IVA - ahora) < 0.02:
+        print("[precio] descartado: %.2f -> %.2f es el mismo precio sin IVA"
+              % (antes, ahora))
+        return False
+
     baja_eur = antes - ahora
     return (baja_eur / antes * 100 >= config["bajada_min_pct"]
             and baja_eur >= config["bajada_min_eur"])

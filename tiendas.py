@@ -203,6 +203,47 @@ def _get(s: requests.Session, url: str, **kw) -> requests.Response:
     raise TiendaCaida("%s -> %s" % (url[:70], ultimo))
 
 
+# IVA general espanol. Quitarlo de un precio son 17,4% menos, que es justo el
+# "descuento" fantasma que aparecia en los avisos.
+IVA = 1.21
+
+
+def _precio_de_tarjeta(tarjeta) -> float | None:
+    """El precio que paga el cliente, de una tarjeta del buscador de Amazon.
+
+    Amazon sirve a veces la variante para empresas, donde la misma tarjeta trae
+    el precio SIN IVA ademas del normal. Cogiendo el primero que aparece se
+    colaba el de sin IVA, y como es un 17,4% mas bajo, el radar lo cantaba como
+    bajada. Comprobado sobre los avisos falsos: 43,79 x 1,21 = 52,99 exacto,
+    20,65 -> 24,99, 9,08 -> 10,99, 74,23 -> 89,82.
+
+    La regla no mira etiquetas ni clases, que Amazon cambia cuando quiere, sino
+    la aritmetica: si de dos precios de la tarjeta uno es el otro dividido por
+    1,21, son el mismo precio con y sin IVA, y el bueno es el alto.
+    """
+    valores = []
+    for envoltorio in tarjeta.select("span.a-price"):
+        clases = envoltorio.get("class") or []
+        # a-text-price es el precio tachado de referencia y el precio por
+        # unidad; ninguno de los dos es lo que se paga.
+        if "a-text-price" in clases or envoltorio.get("data-a-strike"):
+            continue
+        off = envoltorio.select_one("span.a-offscreen")
+        if not off:
+            continue
+        v = _precio(off.get_text(strip=True))
+        if v:
+            valores.append(v)
+
+    if not valores:
+        return None
+    for alto in sorted(valores, reverse=True):
+        for bajo in valores:
+            if bajo < alto and abs(alto / IVA - bajo) < 0.02:
+                return alto          # pareja con IVA / sin IVA: vale el alto
+    return valores[0]
+
+
 def _precio(texto: str) -> float | None:
     """'1.234,56 EUR' -> 1234.56. None si no hay nada parseable.
 
@@ -282,8 +323,7 @@ def amazon(palabras: list[str], paginas: int = 2,
                 titulo = h2.get_text(" ", strip=True) if h2 else ""
                 if not titulo:
                     continue
-                off = c.select_one("span.a-price span.a-offscreen")
-                precio = _precio(off.get_text(strip=True)) if off else None
+                precio = _precio_de_tarjeta(c)
                 agotado = "no disponible" in c.get_text(" ", strip=True).lower()
                 img = c.select_one("img.s-image")
                 out[asin] = Producto(
