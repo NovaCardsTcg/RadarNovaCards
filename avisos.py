@@ -233,7 +233,20 @@ def _ejecuta(texto: str, config: dict, estado: dict) -> str:
     if cmd == "prueba":
         enviar("Prueba del radar. Si ves esto, los avisos llegan bien.",
                boton=("Abrir Amazon", "https://www.amazon.es/s?k=pokemon"))
-        return ""
+        canal = config.get("canal_publico") or ""
+        if not canal:
+            return "Prueba enviada. No hay canal publico configurado (/canal)."
+        # Se publica de verdad en el canal: es la unica forma de saber si el
+        # bot tiene permiso, porque Telegram solo da el error al intentarlo.
+        antes = ULTIMO["ok"]
+        enviar("Prueba del radar. Si ves esto, el canal esta bien configurado.",
+               destino=canal, silencioso=True)
+        if ULTIMO["ok"] > antes:
+            return "Prueba enviada aqui y publicada en <b>%s</b>." % esc(canal)
+        return ("Aqui ha llegado, pero en <b>%s</b> ha fallado:\n<code>%s</code>\n\n"
+                "Suele ser que el bot no es administrador del canal, o que no "
+                "tiene marcado 'Publicar mensajes'."
+                % (esc(canal), esc(ULTIMO["error"][:120])))
 
     if cmd == "vendedor":
         opciones = {"amazon": ["amazon.es"], "todos": [],
