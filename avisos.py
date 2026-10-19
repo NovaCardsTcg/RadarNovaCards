@@ -16,6 +16,7 @@ from __future__ import annotations
 import html
 import os
 import time
+from urllib.parse import quote_plus
 
 import requests
 
@@ -77,8 +78,56 @@ def hay_credenciales() -> bool:
     return bool(os.environ.get("TELEGRAM_TOKEN") and os.environ.get("TELEGRAM_CHAT_ID"))
 
 
+# Accesos directos del menu fijado en el canal. Cada uno lleva a la busqueda de
+# Amazon con la etiqueta de afiliado pegada.
+#
+# Se enlaza a la BUSQUEDA y no a productos concretos a proposito: un producto se
+# agota y el enlace queda muerto, mientras que una busqueda sigue viva siempre y
+# ademas no muestra precios, que es lo que el acuerdo de Afiliados no deja
+# publicar sin su API.
+CATEGORIAS = [
+    ("Fundas", "fundas protectores cartas pokemon"),
+    ("Carpetas", "carpeta archivador cartas pokemon"),
+    ("Cajas y deck box", "caja almacenaje cartas pokemon deck box"),
+    ("Tapetes", "tapete playmat pokemon"),
+    ("Dados y contadores", "dados contadores pokemon jcc"),
+    ("Sobres", "sobres pokemon jcc"),
+    ("Cajas de entrenador", "caja entrenador elite pokemon"),
+    ("Latas", "lata pokemon jcc"),
+]
+
+
+def menu_canal(config: dict) -> tuple[str, list]:
+    """El mensaje de menu que se fija arriba del canal.
+
+    Es el "buscador dentro del canal" que se puede tener de verdad: Telegram no
+    deja poner una caja de texto en un canal, pero si botones permanentes. Cada
+    uno abre la busqueda de Amazon ya filtrada y con la etiqueta.
+    """
+    etiqueta = config.get("amazon_afiliado", "")
+    filas, fila = [], []
+    for nombre, consulta in config.get("categorias") or CATEGORIAS:
+        url = "https://www.amazon.es/s?k=" + quote_plus(consulta)
+        if etiqueta:
+            url += "&tag=" + etiqueta
+        fila.append({"text": nombre, "url": url})
+        if len(fila) == 2:
+            filas.append(fila)
+            fila = []
+    if fila:
+        filas.append(fila)
+
+    texto = ("<b>Busca lo que necesites</b>\n\n"
+             "Accesorios y producto sellado de Pokemon. Toca una categoria y te "
+             "lleva directo.\n\n"
+             "<i>En el canal se avisa de producto nuevo, reposiciones y bajadas "
+             "de precio en Amazon, El Corte Ingles, GAME y CardZone.</i>")
+    return texto, filas
+
+
 def enviar(texto: str, imagen: str | None = None, boton: tuple[str, str] | None = None,
-           silencioso: bool = False, destino: str | None = None):
+           silencioso: bool = False, destino: str | None = None,
+           teclado: list | None = None):
     """Manda un mensaje. Con imagen usa sendPhoto, que en el movil entra como
     tarjeta con foto y se lee de un vistazo sin abrir nada.
 
@@ -95,7 +144,9 @@ def enviar(texto: str, imagen: str | None = None, boton: tuple[str, str] | None 
 
     base = {"chat_id": destino or _chat(), "parse_mode": "HTML",
             "disable_notification": silencioso}
-    if boton:
+    if teclado:
+        base["reply_markup"] = {"inline_keyboard": teclado}
+    elif boton:
         base["reply_markup"] = {"inline_keyboard": [[{"text": boton[0], "url": boton[1]}]]}
 
     if imagen:
@@ -123,6 +174,7 @@ AYUDA = """<b>Radar Pokemon</b>
 /max 15 - maximo de avisos por ciclo
 /vendedor amazon - en Amazon, solo lo que vende Amazon
 /canal @micanal - publicar tambien en un canal publico
+/menu - publicar y fijar el menu de busqueda en el canal
 /afiliado tuetiqueta-21 - tu codigo de Amazon Afiliados
 /reporte - resumen de lo que ha pasado
 /reportes 24 - mandarmelo solo cada 24 h (off para quitarlo)
@@ -277,6 +329,24 @@ def _ejecuta(texto: str, config: dict, estado: dict) -> str:
                                "disp": None, "visto": 0}
         return ("Vigilando <b>%s</b>\nTe aviso cuando pase de agotado a comprable.\n"
                 "En la lista hay %d productos." % (esc(producto.titulo), len(vig)))
+
+    if cmd == "menu":
+        canal = config.get("canal_publico") or ""
+        if not canal:
+            return "No hay canal configurado. Ponlo con /canal @tucanal"
+        texto_menu, teclado = menu_canal(config)
+        res = enviar(texto_menu, destino=canal, teclado=teclado, silencioso=True)
+        if not res:
+            return ("No he podido publicar en %s:\n<code>%s</code>"
+                    % (esc(canal), esc(ULTIMO["error"][:120])))
+        # Fijarlo es lo que lo convierte en menu: queda arriba del canal para
+        # todo el que entre, en vez de perderse entre los avisos.
+        fijado = _llama("pinChatMessage", chat_id=canal,
+                        message_id=res.get("message_id"),
+                        disable_notification=True)
+        aviso = "" if fijado else ("\n\nPublicado, pero no he podido fijarlo: "
+                                   "al bot le falta el permiso de fijar mensajes.")
+        return "Menu publicado en <b>%s</b>.%s" % (esc(canal), aviso)
 
     if cmd == "canal":
         if arg.lower() in ("off", "no", "quitar"):
