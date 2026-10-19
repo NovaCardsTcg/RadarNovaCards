@@ -1,5 +1,5 @@
 {
-  "amazon_afiliado": "",
+  "amazon_afiliado": "novacards-21",
   "amazon_vendedores": [
     "amazon.es"
   ],
@@ -14,6 +14,7 @@
     "mediamarkt": 0,
     "pokemoncenter": 30
   },
+  "canal_publico": "@cromeltcg",
   "destacar": [
     "30 aniversario",
     "30th aniversario",
