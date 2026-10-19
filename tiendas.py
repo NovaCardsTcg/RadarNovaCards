@@ -285,8 +285,21 @@ VENDEDORES_AMAZON = {
 }
 
 
+def enlace_afiliado(url: str, etiqueta: str) -> str:
+    """Pega la etiqueta de Amazon Afiliados al enlace del producto.
+
+    Amazon atribuye la comision por el parametro `tag` de la URL, asi que basta
+    con anadirlo al enlace que va en el aviso. Si ya lleva uno se respeta: no
+    se pisa una etiqueta puesta a mano.
+    """
+    if not etiqueta or "tag=" in url:
+        return url
+    return url + ("&" if "?" in url else "?") + "tag=" + etiqueta
+
+
 def amazon(palabras: list[str], paginas: int = 2,
-           vendedores: list[str] | None = None) -> list[Producto]:
+           vendedores: list[str] | None = None,
+           afiliado: str = "") -> list[Producto]:
     """Busqueda en Amazon.es, opcionalmente restringida a ciertos vendedores.
 
     Filtrar por vendedor se hace con la faceta del propio buscador de Amazon
@@ -328,7 +341,7 @@ def amazon(palabras: list[str], paginas: int = 2,
                 img = c.select_one("img.s-image")
                 out[asin] = Producto(
                     tienda="amazon", pid=asin, titulo=titulo,
-                    url="https://www.amazon.es/dp/" + asin,
+                    url=enlace_afiliado("https://www.amazon.es/dp/" + asin, afiliado),
                     precio=precio,
                     disponible=(precio is not None and not agotado),
                     imagen=img.get("src") if img else None,
@@ -791,6 +804,65 @@ def detalle(p: Producto) -> Producto:
     return p
 
 
+# --------------------------------------------------------------------------
+# Shopify: la fuente mas limpia que hay
+# --------------------------------------------------------------------------
+
+# Toda tienda Shopify publica su catalogo en /products.json sin autenticacion:
+# titulo, precio, si hay existencias y la fecha de alta, en JSON y sin HTML que
+# se rompa cuando rediseñen la web. Es la unica fuente del radar que da los tres
+# avisos (nuevo, stock y precio) con una peticion por pagina.
+#
+# Anadir una tienda aqui es una linea, pero tiene que ser Shopify de verdad: de
+# las tiendas de hobby espanolas probadas solo CardZone lo es, el resto van con
+# PrestaShop y no tienen un endpoint equivalente.
+TIENDAS_SHOPIFY = {
+    "cardzone": ("CardZone", "cardzone.es"),
+}
+
+
+def _shopify(dominio: str, clave: str, palabras: list[str],
+             paginas: int = 8) -> list[Producto]:
+    s = _sesion("https://%s/" % dominio)
+    out: list[Producto] = []
+    for pag in range(1, paginas + 1):
+        r = _get(s, "https://%s/products.json?limit=250&page=%d" % (dominio, pag))
+        try:
+            lote = r.json().get("products") or []
+        except ValueError:
+            raise TiendaCaida("%s no devuelve JSON en products.json" % dominio)
+        if not lote:
+            break
+        for p in lote:
+            variantes = p.get("variants") or [{}]
+            v = variantes[0]
+            try:
+                precio = float(v.get("price")) if v.get("price") else None
+            except (TypeError, ValueError):
+                precio = None
+            imagen = (p.get("images") or [{}])[0].get("src")
+            out.append(Producto(
+                tienda=clave, pid=str(p.get("id")),
+                titulo=p.get("title") or "",
+                url="https://%s/products/%s" % (dominio, p.get("handle") or ""),
+                precio=precio,
+                # Agotado en Shopify es available=False en todas las variantes.
+                disponible=any(x.get("available") for x in variantes),
+                imagen=imagen,
+            ))
+        time.sleep(random.uniform(0.3, 0.8))
+    if not out:
+        raise TiendaCaida("%s no ha devuelto ningun producto" % dominio)
+    return out
+
+
+def _adaptador_shopify(clave: str, dominio: str):
+    def adaptador(palabras: list[str], **kw) -> list[Producto]:
+        return _shopify(dominio, clave, palabras)
+    adaptador.__name__ = "shopify_" + clave
+    return adaptador
+
+
 # clave -> (funcion, da_precio_y_stock)
 ADAPTADORES = {
     "amazon": (amazon, True),
@@ -801,6 +873,11 @@ ADAPTADORES = {
     "carrefour": (carrefour, False),
 }
 
+# Las de Shopify se registran solas: anadir una tienda es tocar solo
+# TIENDAS_SHOPIFY. Dan precio y stock, asi que entran como fuente completa.
+for _clave, (_nombre, _dominio) in TIENDAS_SHOPIFY.items():
+    ADAPTADORES[_clave] = (_adaptador_shopify(_clave, _dominio), True)
+
 NOMBRES = {
     "amazon": "Amazon.es",
     "eci": "El Corte Ingles",
@@ -809,3 +886,5 @@ NOMBRES = {
     "pokemoncenter": "Pokemon Center",
     "carrefour": "Carrefour",
 }
+NOMBRES.update({k: n for k, (n, _d) in TIENDAS_SHOPIFY.items()})
+

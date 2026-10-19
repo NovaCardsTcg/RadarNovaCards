@@ -1,4 +1,5 @@
 {
+  "amazon_afiliado": "",
   "amazon_vendedores": [
     "amazon.es"
   ],
@@ -6,6 +7,7 @@
   "bajada_min_pct": 5.0,
   "cada_min": {
     "amazon": 0,
+    "cardzone": 0,
     "carrefour": 360,
     "eci": 0,
     "game": 30,
@@ -101,6 +103,7 @@
   ],
   "tiendas": {
     "amazon": true,
+    "cardzone": true,
     "carrefour": true,
     "eci": true,
     "game": true,

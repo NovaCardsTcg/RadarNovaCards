@@ -111,6 +111,7 @@ CONFIG_DEFECTO = {
     "max_avisos": 15,
     "rodaje_pasadas": 12,
     "amazon_vendedores": ["amazon.es"],
+    "amazon_afiliado": "",
     "fichas_por_pasada": 25,
     "horas_silencio": 12,
     "pasadas_confirmar": 2,
@@ -678,8 +679,11 @@ def main() -> int:
             t0 = time.time()
             # Amazon admite filtrar por vendedor con la faceta de su buscador.
             extra = {}
-            if tienda == "amazon" and config.get("amazon_vendedores"):
-                extra["vendedores"] = config["amazon_vendedores"]
+            if tienda == "amazon":
+                if config.get("amazon_vendedores"):
+                    extra["vendedores"] = config["amazon_vendedores"]
+                if config.get("amazon_afiliado"):
+                    extra["afiliado"] = config["amazon_afiliado"]
             productos = fn(config["palabras"], **extra)
             productos = [p for p in productos if relevante(p, config, da_precio)]
             estado.setdefault("ultima_tienda", {})[tienda] = time.time()
