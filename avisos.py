@@ -78,19 +78,22 @@ def hay_credenciales() -> bool:
 
 
 def enviar(texto: str, imagen: str | None = None, boton: tuple[str, str] | None = None,
-           silencioso: bool = False):
+           silencioso: bool = False, destino: str | None = None):
     """Manda un mensaje. Con imagen usa sendPhoto, que en el movil entra como
     tarjeta con foto y se lee de un vistazo sin abrir nada.
 
     Sin credenciales no revienta: escribe por pantalla. Asi se puede probar en
     local sin token, y una pasada en Actions con el secreto mal puesto sigue
     guardando estado en vez de morirse a la mitad.
+
+    `destino` manda a otro chat que no sea el del dueno: se usa para el canal
+    publico. El bot tiene que ser administrador del canal para poder publicar.
     """
     if not hay_credenciales():
         print("[sin telegram] " + texto.replace("\n", " | ")[:160])
         return None
 
-    base = {"chat_id": _chat(), "parse_mode": "HTML",
+    base = {"chat_id": destino or _chat(), "parse_mode": "HTML",
             "disable_notification": silencioso}
     if boton:
         base["reply_markup"] = {"inline_keyboard": [[{"text": boton[0], "url": boton[1]}]]}
@@ -119,6 +122,8 @@ AYUDA = """<b>Radar Pokemon</b>
 /precio 5 - avisar solo si el precio baja un 5% o mas
 /max 15 - maximo de avisos por ciclo
 /vendedor amazon - en Amazon, solo lo que vende Amazon
+/canal @micanal - publicar tambien en un canal publico
+/afiliado tuetiqueta-21 - tu codigo de Amazon Afiliados
 /reporte - resumen de lo que ha pasado
 /reportes 24 - mandarmelo solo cada 24 h (off para quitarlo)
 /vigilar &lt;url&gt; - vigilar el stock de un producto concreto
@@ -259,6 +264,34 @@ def _ejecuta(texto: str, config: dict, estado: dict) -> str:
                                "disp": None, "visto": 0}
         return ("Vigilando <b>%s</b>\nTe aviso cuando pase de agotado a comprable.\n"
                 "En la lista hay %d productos." % (esc(producto.titulo), len(vig)))
+
+    if cmd == "canal":
+        if arg.lower() in ("off", "no", "quitar"):
+            config["canal_publico"] = ""
+            return "Canal publico desconectado. Los avisos solo vienen a este chat."
+        if arg:
+            config["canal_publico"] = arg
+            return ("Publicare tambien en <b>%s</b>.
+
+Recuerda: el bot tiene que ser "
+                    "administrador del canal, con permiso para publicar." % esc(arg))
+        actual = config.get("canal_publico") or ""
+        return ("Canal publico: <b>%s</b>
+
+"
+                "/canal @micanal - publicar ahi tambien
+"
+                "/canal off - dejar de publicar"
+                % (esc(actual) if actual else "ninguno"))
+
+    if cmd == "afiliado":
+        if arg:
+            config["amazon_afiliado"] = arg.strip()
+            return "Etiqueta de afiliado de Amazon: <b>%s</b>" % esc(arg.strip())
+        return ("Etiqueta de afiliado: <b>%s</b>
+
+/afiliado tuetiqueta-21"
+                % (esc(config.get("amazon_afiliado")) or "ninguna"))
 
     if cmd == "reporte":
         return reporte(estado, config)

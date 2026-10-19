@@ -112,6 +112,7 @@ CONFIG_DEFECTO = {
     "rodaje_pasadas": 12,
     "amazon_vendedores": ["amazon.es"],
     "amazon_afiliado": "",
+    "canal_publico": "",
     "fichas_por_pasada": 25,
     "horas_silencio": 12,
     "pasadas_confirmar": 2,
@@ -234,6 +235,37 @@ def formatea(tipo: str, p, anterior=None, config=None) -> tuple[str, tuple[str, 
         lineas.append("<b>%.2f EUR</b>" % p.precio)
     else:
         lineas.append("(precio sin confirmar, mira la ficha)")
+
+    return "\n".join(lineas), ("Ver producto", p.url)
+
+
+def formatea_publico(tipo: str, p, anterior, config: dict) -> tuple[str, tuple[str, str]]:
+    """El mismo aviso, redactado para el canal publico.
+
+    Difiere del privado en una cosa que no es estetica sino legal: en Amazon no
+    se publica el precio. El acuerdo de Afiliados solo deja mostrar precios si
+    los sirve Amazon o si vienen de su API oficial, y los de aqui salen de
+    raspar la web. Para uso propio da igual; publicarlos es la clase de
+    incumplimiento por la que cierran cuentas, y sin aviso previo.
+
+    Las demas tiendas no estan sujetas a ese acuerdo, asi que ahi si va el
+    precio, que es justo lo que hace util el aviso.
+    """
+    cabeceras = {"nuevo": "NUEVO", "stock": "YA DISPONIBLE", "precio": "BAJA DE PRECIO"}
+    tienda = tiendas.NOMBRES.get(p.tienda, p.tienda)
+    marca = "⭐ " if destacado(p, config) else ""
+    lineas = ["%s<b>%s</b> · %s" % (marca, cabeceras[tipo], tienda),
+              avisos.esc(p.titulo)]
+
+    if p.tienda == "amazon":
+        lineas.append("<i>Precio en Amazon</i>" if tipo != "precio"
+                      else "<i>Ha bajado de precio. Miralo en Amazon</i>")
+    elif tipo == "precio" and anterior and anterior[0] and p.precio:
+        pct = (anterior[0] - p.precio) / anterior[0] * 100
+        lineas.append("<s>%.2f EUR</s> <b>%.2f EUR</b> (-%.0f%%)"
+                      % (anterior[0], p.precio, pct))
+    elif p.precio is not None:
+        lineas.append("<b>%.2f EUR</b>" % p.precio)
 
     return "\n".join(lineas), ("Ver producto", p.url)
 
@@ -774,9 +806,14 @@ def main() -> int:
     pendientes.sort(key=lambda x: (not destacado(x[1], config), orden[x[0]]))
 
     tope = config.get("max_avisos", 15)
+    canal = config.get("canal_publico", "")
     for tipo, p, ant in pendientes[:tope]:
         texto, boton = formatea(tipo, p, ant, config)
         avisos.enviar(texto, imagen=p.imagen, boton=boton)
+        if canal:
+            publico, boton_pub = formatea_publico(tipo, p, ant, config)
+            avisos.enviar(publico, imagen=p.imagen, boton=boton_pub, destino=canal)
+            time.sleep(0.4)
         sella_enviado(p, tipo, estado)
         apunta_para_reporte(p, tipo, config, estado)
         time.sleep(0.5)
