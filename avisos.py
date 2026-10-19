@@ -271,16 +271,11 @@ def _ejecuta(texto: str, config: dict, estado: dict) -> str:
             return "Canal publico desconectado. Los avisos solo vienen a este chat."
         if arg:
             config["canal_publico"] = arg
-            return ("Publicare tambien en <b>%s</b>.
-
-Recuerda: el bot tiene que ser "
+            return ("Publicare tambien en <b>%s</b>.\n\nRecuerda: el bot tiene que ser "
                     "administrador del canal, con permiso para publicar." % esc(arg))
         actual = config.get("canal_publico") or ""
-        return ("Canal publico: <b>%s</b>
-
-"
-                "/canal @micanal - publicar ahi tambien
-"
+        return ("Canal publico: <b>%s</b>\n\n"
+                "/canal @micanal - publicar ahi tambien\n"
                 "/canal off - dejar de publicar"
                 % (esc(actual) if actual else "ninguno"))
 
@@ -288,9 +283,7 @@ Recuerda: el bot tiene que ser "
         if arg:
             config["amazon_afiliado"] = arg.strip()
             return "Etiqueta de afiliado de Amazon: <b>%s</b>" % esc(arg.strip())
-        return ("Etiqueta de afiliado: <b>%s</b>
-
-/afiliado tuetiqueta-21"
+        return ("Etiqueta de afiliado: <b>%s</b>\n\n/afiliado tuetiqueta-21"
                 % (esc(config.get("amazon_afiliado")) or "ninguna"))
 
     if cmd == "reporte":
