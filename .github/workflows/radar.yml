@@ -2,21 +2,27 @@ name: radar
 
 on:
   schedule:
-    # Cada 10 minutos. GitHub no admite menos de 5, y en la practica los cron
-    # programados llegan con retraso variable cuando hay cola: cuenta con
-    # 10-20 minutos reales entre pasadas, no con 10 clavados.
-    - cron: '*/10 * * * *'
+    # Cada 2 horas, no cada 10 minutos. GitHub trata los cron de `schedule`
+    # como la cola de menor prioridad y descarta ejecuciones cuando hay carga:
+    # pidiendo una cada 10 minutos se estaban cumpliendo 7 al dia de 144, con
+    # huecos medios de 206 minutos y picos de 7 horas sin mirar las tiendas.
+    #
+    # Asi que se piden pocas y se hacen largas: cada ejecucion se queda viva
+    # unas dos horas dando pasadas por dentro. Aunque GitHub se salte la mitad
+    # de los arranques, cada uno que entre cubre dos horas seguidas.
+    - cron: '0 */2 * * *'
   workflow_dispatch:
 
-# Dos pasadas a la vez se pisarian el estado. Que espere la siguiente.
+# Si entra una nueva, la vieja sobra: ya esta acabando y el estado se guarda
+# en cada pasada, asi que cortarla no pierde nada.
 concurrency:
   group: radar-pokemon
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   radar:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 140
     permissions:
       contents: write
 
@@ -37,23 +43,41 @@ jobs:
           git fetch origin estado:estado 2>/dev/null || echo "primera ejecucion: aun no hay rama estado"
           git checkout estado -- estado.json config.json 2>/dev/null || echo "arrancando con la config del repo"
 
-      - name: Pasada del radar
-        env:
-          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: python radar.py
-
-      # Se reescribe la rama entera con un unico commit cada vez (push -f sobre
-      # una rama huerfana). El estado es una foto del momento, no un historial:
-      # no interesa guardar las 144 fotos de cada dia.
-      - name: Guardar estado
-        if: always()
+      - name: Preparar la rama de estado
         run: |
-          if [ ! -f estado.json ]; then echo "sin estado que guardar"; exit 0; fi
           git config user.name "radar-pokemon"
           git config user.email "radar@users.noreply.github.com"
           git checkout --orphan estado_nuevo
           git rm -rf --cached . > /dev/null
-          git add -f estado.json config.json
-          git commit -q -m "estado $(date -u '+%Y-%m-%d %H:%M UTC')"
-          git push -f origin estado_nuevo:estado
+
+      - name: Bucle del radar
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          # Se corta sola antes del timeout del job para que la ultima pasada
+          # termine de guardar en vez de morir a medias.
+          FIN=$(( $(date -u +%s) + 125 * 60 ))
+          N=0
+          while [ "$(date -u +%s)" -lt "$FIN" ]; do
+            N=$((N + 1))
+            echo "::group::pasada $N  $(date -u '+%H:%M:%S') UTC"
+            # Una pasada que falle no puede cortar el bucle: la siguiente lo
+            # reintenta diez minutos despues.
+            python radar.py || echo "la pasada ha fallado, se sigue"
+            echo "::endgroup::"
+
+            # El estado se publica en CADA pasada, no al final del job. Con
+            # ejecuciones de dos horas, guardar solo al final significaria
+            # perderlo todo si GitHub corta el job.
+            if [ -f estado.json ]; then
+              git add -f estado.json config.json
+              git commit -q -m "estado $(date -u '+%Y-%m-%d %H:%M UTC')" || true
+              git push -f -q origin estado_nuevo:estado || echo "push fallido, se reintenta en la siguiente"
+            fi
+
+            # Se duerme solo si queda tiempo para otra pasada completa.
+            [ "$(( $(date -u +%s) + 600 ))" -lt "$FIN" ] || break
+            sleep 600
+          done
+          echo "fin del bucle: $N pasadas"
