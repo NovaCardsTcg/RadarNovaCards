@@ -113,7 +113,8 @@ CONFIG_DEFECTO = {
     "amazon_vendedores": ["amazon.es"],
     "amazon_afiliado": "",
     "canal_publico": "",
-    "fichas_por_pasada": 25,
+    "fichas_por_pasada": 15,
+    "stock_cada_min": 10,
     "horas_silencio": 12,
     "pasadas_confirmar": 2,
     "horas_candidato": 24,
@@ -133,6 +134,7 @@ ESTADO_DEFECTO = {
     "recuento": {},       # tienda -> productos que pasaron el filtro en la ultima pasada
     "reporte_desde": "",  # cuando empezo el periodo que cubre el proximo reporte
     "ultimo_reporte": 0,
+    "ultimo_repaso_stock": 0,
     "pasadas": 0,         # para saber cuando termina el rodaje
     "aviso_rodaje": False,
     "telegram_offset": 0,
@@ -511,6 +513,23 @@ def registra_para_vigilar(tienda: str, productos: list, estado: dict):
             entrada["titulo"] = p.titulo
 
 
+def toca_repaso_stock(config: dict, estado: dict) -> bool:
+    """El repaso de stock tiene su propio reloj, aparte del bucle.
+
+    Es necesario desde que el bucle va cada 2 minutos: abrir 25 fichas cada dos
+    minutos son 18.000 peticiones al dia contra GAME, que es la forma mas
+    rapida de que dejen de respondernos. El bucle corto existe para que cada
+    tienda se consulte en cuanto le toca, no para consultarlas todas siempre.
+    """
+    cada = config.get("stock_cada_min", 10)
+    if not cada:
+        return True
+    if time.time() - estado.get("ultimo_repaso_stock", 0) < cada * 60:
+        return False
+    estado["ultimo_repaso_stock"] = time.time()
+    return True
+
+
 def repasa_stock(config: dict, estado: dict) -> list[tuple]:
     """Abre fichas del catalogo vigilado y detecta los que vuelven a estar a la venta.
 
@@ -782,7 +801,8 @@ def main() -> int:
     # El repaso de stock va aparte del barrido de catalogos: la lista de
     # vigilancia ya esta en el estado, asi que se puede mirar en cada pasada
     # aunque el sitemap de Carrefour solo se descargue cada seis horas.
-    pendientes.extend(repasa_stock(config, estado))
+    if toca_repaso_stock(config, estado):
+        pendientes.extend(repasa_stock(config, estado))
 
     # Las fuentes de sitemap solo traen la URL: se abre la ficha de las altas
     # nuevas para poder mandar titulo y precio de verdad.

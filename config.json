@@ -6,10 +6,10 @@
   "bajada_min_eur": 1.0,
   "bajada_min_pct": 5.0,
   "cada_min": {
-    "amazon": 0,
-    "cardzone": 0,
+    "amazon": 15,
+    "cardzone": 5,
     "carrefour": 360,
-    "eci": 0,
+    "eci": 10,
     "game": 30,
     "mediamarkt": 0,
     "pokemoncenter": 30
@@ -68,7 +68,7 @@
     "\\b[A-Z]{0,3}\\d{1,3}\\s*/\\s*[A-Z]{0,3}\\d{2,3}\\b"
   ],
   "exigir_palabra": true,
-  "fichas_por_pasada": 25,
+  "fichas_por_pasada": 15,
   "horas_candidato": 24,
   "horas_silencio": 12,
   "max_avisos": 15,
@@ -83,6 +83,7 @@
   "pausado": false,
   "reporte_cada_h": 24,
   "rodaje_pasadas": 12,
+  "stock_cada_min": 10,
   "tematica": [
     "cartas",
     "carta",
