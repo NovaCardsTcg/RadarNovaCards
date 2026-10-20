@@ -55,15 +55,25 @@ def _llama(metodo: str, **datos):
     tumbar la ejecucion ni impedir que se guarde el estado."""
     ULTIMO["intentos"] += 1
     try:
-        r = requests.post(API % (_token(), metodo), json=datos, timeout=TIMEOUT)
-        j = r.json()
-        if not j.get("ok"):
+        for intento in range(2):
+            r = requests.post(API % (_token(), metodo), json=datos, timeout=TIMEOUT)
+            j = r.json()
+            if j.get("ok"):
+                ULTIMO["ok"] += 1
+                return j.get("result")
+            # Telegram limita a ~1 mensaje por segundo y chat y ~20 por minuto
+            # en un canal. Cuando se pasa, responde 429 con los segundos que
+            # hay que esperar; ignorarlo es perder el mensaje. La primera
+            # pasada tras un parón solto 46 envios seguidos y perdio 15 asi.
+            espera = (j.get("parameters") or {}).get("retry_after")
+            if j.get("error_code") == 429 and espera and intento == 0:
+                print("[telegram] 429, espero %ss" % espera)
+                time.sleep(min(int(espera), 60) + 1)
+                continue
             desc = str(j.get("description"))[:120]
             ULTIMO["error"] = "%s: %s" % (metodo, desc)
             print("[telegram] %s fallo: %s" % (metodo, desc))
             return None
-        ULTIMO["ok"] += 1
-        return j.get("result")
     except (requests.RequestException, ValueError) as e:
         ULTIMO["error"] = "%s: %s" % (metodo, type(e).__name__)
         print("[telegram] %s error: %s" % (metodo, type(e).__name__))

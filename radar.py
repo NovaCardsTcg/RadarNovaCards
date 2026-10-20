@@ -117,6 +117,7 @@ CONFIG_DEFECTO = {
     "stock_cada_min": 10,
     "horas_silencio": 12,
     "pasadas_confirmar": 2,
+    "max_nuevos_pasada": 8,
     "horas_candidato": 24,
     "reporte_cada_h": 24,
     "pausado": False,
@@ -773,6 +774,22 @@ def main() -> int:
 
         primera = not estado["sembrado"].get(tienda) or resembrar
         sucesos = compara(tienda, productos, config, estado, en_rodaje)
+
+        # Avalancha de "nuevos" en una tienda ya sembrada: casi seguro un cambio
+        # de filtros o de palabras, no veinte lanzamientos el mismo minuto.
+        # Anadir "one piece" hizo aparecer de golpe 18 productos en CardZone y
+        # el radar los canto todos como altas. Se anotan sin avisar y se dice
+        # una vez, igual que en la siembra. Las altas de verdad llegan de una
+        # en una o de dos en dos y pasan por debajo del tope.
+        nuevos = [x for x in sucesos if x[0] == "nuevo"]
+        if not primera and len(nuevos) > config.get("max_nuevos_pasada", 8):
+            sucesos = [x for x in sucesos if x[0] != "nuevo"]
+            avisos_sistema.append(
+                "<b>%s</b>: han aparecido %d productos nuevos de golpe, seguramente "
+                "por un cambio de filtros. Los anoto sin avisar; a partir de ahora "
+                "solo te aviso de los cambios."
+                % (tiendas.NOMBRES.get(tienda, tienda), len(nuevos)))
+
         resumen_pasada.append("%s:%d" % (tienda, len(productos)))
         # Lo que de verdad se vigila hoy. En "productos" quedan restos de
         # cuando los filtros eran mas anchos (Amazon acumulo 506 entradas que

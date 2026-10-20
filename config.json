@@ -65,17 +65,24 @@
     "mybooster",
     "netflix",
     "panini",
-    "bento"
+    "bento",
+    "top box",
+    "name it",
+    "box set",
+    "topi games",
+    "5 minutos"
   ],
   "excluir_patron": [
     "\\b[A-Z]{0,3}\\d{1,3}\\s*/\\s*[A-Z]{0,3}\\d{2,3}\\b",
-    "\\b(OP|ST|EB|PRB)\\d{2}-\\d{3}\\b"
+    "\\b(OP|ST|EB|PRB)\\d{2}-\\d{3}\\b",
+    "\\bvol[uú]menes\\b"
   ],
   "exigir_palabra": true,
   "fichas_por_pasada": 15,
   "horas_candidato": 24,
   "horas_silencio": 12,
   "max_avisos": 15,
+  "max_nuevos_pasada": 8,
   "palabras": [
     "pokemon",
     "pokemon jcc",
@@ -107,8 +114,12 @@
     "juego de cartas",
     "cartas coleccionables",
     "ultra premium",
-    "box",
-    "caja de sobres"
+    "caja de sobres",
+    "illustration box",
+    "special box",
+    "pin box",
+    "booster box",
+    "display box"
   ],
   "tiendas": {
     "amazon": true,

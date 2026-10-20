@@ -43,8 +43,29 @@ jobs:
 
       - name: Recuperar estado de la pasada anterior
         run: |
+          # La config de la rama estado guarda lo que se cambia desde Telegram
+          # (palabras, tiendas, canal, afiliado...). Pero las listas de filtros
+          # se editan en main, y como el job que corre reescribe la rama estado
+          # cada 5 minutos con SU config, un cambio de filtros empujado a esa
+          # rama se perdia en minutos. Aqui main manda en los filtros y estado
+          # en lo demas, y se acabo empujar la misma config a dos ramas.
+          cp config.json config.main.json
           git fetch origin estado:estado 2>/dev/null || echo "primera ejecucion: aun no hay rama estado"
           git checkout estado -- estado.json config.json 2>/dev/null || echo "arrancando con la config del repo"
+          python - <<'PY'
+          import json
+          e = json.load(open("config.json", encoding="utf-8"))
+          m = json.load(open("config.main.json", encoding="utf-8"))
+          for k in ("tematica", "excluir", "excluir_patron", "destacar", "cada_min",
+                    "stock_cada_min", "fichas_por_pasada", "pasadas_confirmar",
+                    "horas_candidato", "rodaje_pasadas", "max_nuevos_pasada"):
+              if k in m:
+                  e[k] = m[k]
+          json.dump(e, open("config.json", "w", encoding="utf-8"),
+                    ensure_ascii=False, indent=2, sort_keys=True)
+          print("filtros tomados de main; resto de la config, de la rama estado")
+          PY
+          rm -f config.main.json
 
       - name: Preparar la rama de estado
         run: |
