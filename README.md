@@ -303,6 +303,12 @@ te deje. Copia el token y pégalo en el repo → *Settings* → *Secrets and var
 *Actions* → *New repository secret*, con el nombre exacto `RADAR_PAT`. Sin él todo
 funciona igual, pero dependiendo de que GitHub acepte el cron.
 
+**Dónde se cambia cada cosa.** Las listas de filtros (`tematica`, `excluir`,
+`excluir_patron`, `destacar`, cadencias) se editan en `config.json` de **`main`** y el job
+las toma de ahí al arrancar. Lo que se cambia desde Telegram (palabras, tiendas, canal,
+afiliado, pausa...) vive en la rama `estado`. No hace falta tocar la rama `estado` a mano,
+y de hecho no sirve: el job que corre la reescribe cada 5 minutos con su propia config.
+
 Si el radar está parado (no hay ninguna ejecución *in progress* en Actions), se arranca a
 mano con **Run workflow** y a partir de ahí se encadena solo.
 

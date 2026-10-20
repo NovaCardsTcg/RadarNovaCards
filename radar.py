@@ -850,10 +850,14 @@ def main() -> int:
         if canal:
             publico, boton_pub = formatea_publico(tipo, p, ant, config)
             avisos.enviar(publico, imagen=p.imagen, boton=boton_pub, destino=canal)
-            time.sleep(0.4)
+            time.sleep(1.1)
         sella_enviado(p, tipo, estado)
         apunta_para_reporte(p, tipo, config, estado)
-        time.sleep(0.5)
+        # Telegram admite ~1 mensaje por segundo y chat. Con dos chats por
+        # aviso, 1,1 s entre envios deja cada chat por debajo del limite; a
+        # medio segundo, la primera pasada tras un paron devolvio 429 y
+        # perdio 15 mensajes.
+        time.sleep(1.1)
 
     if len(pendientes) > tope:
         resto = len(pendientes) - tope
