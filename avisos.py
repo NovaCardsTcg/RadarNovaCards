@@ -94,6 +94,8 @@ CATEGORIAS = [
     ("Sobres", "sobres pokemon jcc"),
     ("Cajas de entrenador", "caja entrenador elite pokemon"),
     ("Latas", "lata pokemon jcc"),
+    ("One Piece: sobres y cajas", "one piece card game booster"),
+    ("One Piece: mazos", "one piece card game starter deck"),
 ]
 
 
@@ -118,7 +120,7 @@ def menu_canal(config: dict) -> tuple[str, list]:
         filas.append(fila)
 
     texto = ("<b>Busca lo que necesites</b>\n\n"
-             "Accesorios y producto sellado de Pokemon. Toca una categoria y te "
+             "Accesorios y producto sellado de Pokemon y One Piece. Toca una categoria y te "
              "lleva directo.\n\n"
              "<i>En el canal se avisa de producto nuevo, reposiciones y bajadas "
              "de precio en Amazon, El Corte Ingles, GAME y CardZone.</i>")
