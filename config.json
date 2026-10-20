@@ -62,10 +62,14 @@
     "graded",
     "near mint",
     "my-booster",
-    "mybooster"
+    "mybooster",
+    "netflix",
+    "panini",
+    "bento"
   ],
   "excluir_patron": [
-    "\\b[A-Z]{0,3}\\d{1,3}\\s*/\\s*[A-Z]{0,3}\\d{2,3}\\b"
+    "\\b[A-Z]{0,3}\\d{1,3}\\s*/\\s*[A-Z]{0,3}\\d{2,3}\\b",
+    "\\b(OP|ST|EB|PRB)\\d{2}-\\d{3}\\b"
   ],
   "exigir_palabra": true,
   "fichas_por_pasada": 15,
@@ -77,7 +81,8 @@
     "pokemon jcc",
     "cartas pokemon",
     "pokemon 30 aniversario",
-    "pokemon 30th"
+    "pokemon 30th",
+    "one piece"
   ],
   "pasadas_confirmar": 2,
   "pausado": false,
@@ -101,7 +106,9 @@
     "display",
     "juego de cartas",
     "cartas coleccionables",
-    "ultra premium"
+    "ultra premium",
+    "box",
+    "caja de sobres"
   ],
   "tiendas": {
     "amazon": true,
