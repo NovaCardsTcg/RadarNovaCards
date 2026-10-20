@@ -325,14 +325,25 @@ def amazon(palabras: list[str], paginas: int = 2,
             # s=date-desc-rank es el orden "novedades": lo recien listado sale arriba.
             url = ("https://www.amazon.es/s?k=%s&s=date-desc-rank&page=%d%s"
                    % (quote_plus(palabra), pag, filtro))
-            r = _get(s, url)
+            try:
+                r = _get(s, url)
+            except TiendaCaida as e:
+                # Una pagina bloqueada no puede tirar la tienda entera: se anota
+                # y se sigue con la siguiente. Antes el error saltaba aqui sin
+                # dejar rastro y Amazon quedaba como "caida" por un solo 503,
+                # aunque las otras nueve paginas hubieran respondido.
+                DIAG_AMAZON.append({"q": palabra, "pag": pag, "kb": 0, "tarjetas": 0,
+                                    "muro": str(e).rsplit("->", 1)[-1].strip()[:40]})
+                time.sleep(random.uniform(3.0, 6.0))
+                continue
             # Amazon casi nunca responde 403: cuando no le gustas devuelve un 200
             # con una pagina de interstitial. Por eso hay que mirar el contenido.
             marca = _marcador(r.text)
             if marca:
                 DIAG_AMAZON.append({"q": palabra, "pag": pag, "kb": len(r.text) // 1024,
                                     "tarjetas": 0, "muro": marca})
-                raise TiendaCaida("muro antibot de Amazon [%s]" % marca)
+                time.sleep(random.uniform(3.0, 6.0))
+                continue
             pista = "200 pero sin tarjetas, %d KB" % (len(r.text) // 1024)
             sopa = BeautifulSoup(r.text, "lxml")
             tarjetas = sopa.select('div[data-component-type="s-search-result"]')
