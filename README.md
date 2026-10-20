@@ -330,7 +330,7 @@ pasada escribe en la rama `estado`, y eso cuenta como actividad.
 
 ---
 
-## 10. Ficheros
+## 11. Ficheros
 
 | Fichero | Qué hace |
 |---|---|
@@ -351,7 +351,7 @@ permite que los cambios que haces por Telegram sobrevivan de una pasada a la sig
 
 ---
 
-## 15. Probarlo en local
+## 12. Probarlo en local
 
 ```bash
 pip install -r requirements.txt
