@@ -102,3 +102,21 @@ jobs:
             git push -f -q origin estado_nuevo:estado || true
           fi
           echo "fin del bucle: $N pasadas"
+
+      # El cron de GitHub es la red de seguridad, no el motor: se salta la
+      # mayoria de los arranques (hoy, los de las 06, 07 y 08). Las ejecuciones
+      # lanzadas por API con workflow_dispatch no sufren ese descarte, asi que
+      # cada job, al terminar, lanza el siguiente. Hace falta un token propio
+      # (RADAR_PAT, fine-grained, permiso Actions: write) porque el GITHUB_TOKEN
+      # de serie no puede disparar workflows, a proposito, para evitar bucles.
+      # Si el secret no existe, no pasa nada: se sigue dependiendo del cron.
+      - name: Encadenar la siguiente ejecucion
+        if: always()
+        env:
+          PAT: ${{ secrets.RADAR_PAT }}
+        run: |
+          if [ -z "$PAT" ]; then echo "sin RADAR_PAT: la siguiente depende del cron"; exit 0; fi
+          curl -s -o /dev/null -w "siguiente ejecucion lanzada: HTTP %{http_code}\n" -X POST \
+            -H "Authorization: Bearer $PAT" -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/actions/workflows/radar.yml/dispatches" \
+            -d '{"ref":"main"}'
