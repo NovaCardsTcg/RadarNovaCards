@@ -854,6 +854,13 @@ def main() -> int:
         avisos.enviar(msg, silencioso=True)
         time.sleep(0.4)
 
+    # Diagnostico de Amazon pagina a pagina, de la ultima pasada que la consulto.
+    # Es lo unico que permite ver desde fuera que le devuelve Amazon a la IP de
+    # GitHub, porque los logs de Actions no se pueden leer sin autenticacion y
+    # la rama estado si es publica.
+    if tiendas.DIAG_AMAZON:
+        estado["diag_amazon"] = {"cuando": ahora(), "paginas": list(tiendas.DIAG_AMAZON)}
+
     # Queda anotado si Telegram esta bien configurado y si los envios cuelan.
     # Se publica con el estado, asi que se puede comprobar sin entrar a los
     # logs de Actions ni tener acceso a los secrets del repo.

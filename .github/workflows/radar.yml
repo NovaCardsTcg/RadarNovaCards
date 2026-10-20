@@ -2,18 +2,26 @@ name: radar
 
 on:
   schedule:
-    # Arranque cada 3 horas, pero cada ejecucion aguanta hasta 6 (el maximo que
-    # permite GitHub). Asi, si GitHub se salta un arranque -y se salta muchos:
-    # medido, cumplia 7 de 144-, el job anterior sigue vivo y no deja hueco.
-    #
-    # Con cancel-in-progress, el arranque que SI entre releva al que estaba
-    # corriendo, de modo que en la practica siempre hay uno fresco trabajando.
-    - cron: '0 */3 * * *'
+    # Se pide un arranque CADA HORA aunque cada ejecucion dure 6 (el maximo de
+    # GitHub). No es para que corran varias: es porque GitHub se salta
+    # arranques programados a mansalva (medido: 7 cumplidos de 144, y ayer se
+    # salto los de las 15, 18 y 06). Pidiendo 24 al dia basta con que entre uno
+    # cada seis horas para no dejar hueco.
+    - cron: '0 * * * *'
   workflow_dispatch:
 
+# Sin cancel-in-progress, a proposito. Mientras una ejecucion corre, la
+# siguiente que GitHub acepte se queda EN COLA y arranca en el mismo instante
+# en que la primera termina; los arranques posteriores van sustituyendo a ese
+# que espera, asi que nunca hay mas de uno en cola. Resultado: cobertura sin
+# cortes mientras GitHub acepte al menos un arranque cada seis horas.
+#
+# Con cancel-in-progress pasaba lo contrario: si GitHub creaba la ejecucion
+# nueva pero tardaba en darle maquina, la vieja moria al instante y el radar
+# se quedaba parado justo el rato de la espera.
 concurrency:
   group: radar-pokemon
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   radar:

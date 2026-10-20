@@ -285,6 +285,11 @@ VENDEDORES_AMAZON = {
 }
 
 
+# Que devolvio cada pagina de Amazon en la ultima consulta. Lo lee el
+# orquestador y lo publica con el estado.
+DIAG_AMAZON: list[dict] = []
+
+
 def enlace_afiliado(url: str, etiqueta: str) -> str:
     """Pega la etiqueta de Amazon Afiliados al enlace del producto.
 
@@ -314,6 +319,7 @@ def amazon(palabras: list[str], paginas: int = 2,
     if vendedores:
         ids = [VENDEDORES_AMAZON.get(v, v) for v in vendedores]
         filtro = "&rh=" + quote_plus("p_6:" + "|".join(ids))
+    DIAG_AMAZON.clear()
     for palabra in palabras:
         for pag in range(1, paginas + 1):
             # s=date-desc-rank es el orden "novedades": lo recien listado sale arriba.
@@ -324,10 +330,21 @@ def amazon(palabras: list[str], paginas: int = 2,
             # con una pagina de interstitial. Por eso hay que mirar el contenido.
             marca = _marcador(r.text)
             if marca:
+                DIAG_AMAZON.append({"q": palabra, "pag": pag, "kb": len(r.text) // 1024,
+                                    "tarjetas": 0, "muro": marca})
                 raise TiendaCaida("muro antibot de Amazon [%s]" % marca)
             pista = "200 pero sin tarjetas, %d KB" % (len(r.text) // 1024)
             sopa = BeautifulSoup(r.text, "lxml")
             tarjetas = sopa.select('div[data-component-type="s-search-result"]')
+            # Queda anotado pagina a pagina. Una pagina con 200, sin muro
+            # conocido y con cero tarjetas se saltaba en silencio, y eso es
+            # indistinguible desde fuera de "Amazon no tenia mas resultados".
+            # Desde casa el embudo da 52 productos y desde GitHub 20, y sin
+            # esto no hay forma de saber en que pagina se pierden.
+            DIAG_AMAZON.append({"q": palabra, "pag": pag, "kb": len(r.text) // 1024,
+                                "tarjetas": len(tarjetas),
+                                "titulo": (sopa.title.get_text(strip=True)[:40]
+                                           if sopa.title else "")})
             for c in tarjetas:
                 asin = c.get("data-asin")
                 if not asin or len(asin) != 10:
