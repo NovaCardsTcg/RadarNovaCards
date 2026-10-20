@@ -281,7 +281,34 @@ comprobaciones por pasada.
 
 ---
 
-## 9. Lo que puede salir mal
+## 9. Por qué el bot corre en ejecuciones de seis horas, y qué es RADAR_PAT
+
+GitHub trata los cron de `schedule` como la cola de menor prioridad y **descarta la
+mayoría**: medido, cumplía 7 arranques al día de los 144 pedidos, y el 20/10 se saltó
+seguidos los de las 06, las 07 y las 08. Por eso el radar ya no es "una ejecución cada
+10 minutos" sino:
+
+- Cada ejecución dura **hasta 6 horas** (el máximo de GitHub) y da una pasada cada 2
+  minutos por dentro. A cada tienda se le pregunta cuando le toca según `cada_min`.
+- El cron pide un arranque **cada hora**, sin cancelar el que corre: el que GitHub
+  acepte se queda en cola y arranca en el instante en que acaba el anterior.
+- Y, si existe el secret **`RADAR_PAT`**, cada ejecución **lanza la siguiente por API** al
+  terminar. Las ejecuciones lanzadas así no sufren el descarte de los `schedule`, que
+  pasa a ser solo la red de seguridad.
+
+Para crear `RADAR_PAT`: github.com → tu avatar → *Settings* → *Developer settings* →
+*Personal access tokens* → *Fine-grained tokens* → *Generate new token*. Repositorio:
+solo `RadarNovaCards`. Permiso: **Actions → Read and write**. Caducidad: la máxima que
+te deje. Copia el token y pégalo en el repo → *Settings* → *Secrets and variables* →
+*Actions* → *New repository secret*, con el nombre exacto `RADAR_PAT`. Sin él todo
+funciona igual, pero dependiendo de que GitHub acepte el cron.
+
+Si el radar está parado (no hay ninguna ejecución *in progress* en Actions), se arranca a
+mano con **Run workflow** y a partir de ahí se encadena solo.
+
+---
+
+## 10. Lo que puede salir mal
 
 **Amazon corta de vez en cuando.** Devolvió 403 y 503 desde GitHub hasta que se añadió
 lo de pedir la portada primero. Aun así cuenta con cortes sueltos: el radar reintenta,
@@ -324,7 +351,7 @@ permite que los cambios que haces por Telegram sobrevivan de una pasada a la sig
 
 ---
 
-## 11. Probarlo en local
+## 15. Probarlo en local
 
 ```bash
 pip install -r requirements.txt
