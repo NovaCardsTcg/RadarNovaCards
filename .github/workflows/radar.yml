@@ -58,7 +58,8 @@ jobs:
           m = json.load(open("config.main.json", encoding="utf-8"))
           for k in ("tematica", "excluir", "excluir_patron", "destacar", "cada_min",
                     "stock_cada_min", "fichas_por_pasada", "pasadas_confirmar",
-                    "horas_candidato", "rodaje_pasadas", "max_nuevos_pasada"):
+                    "horas_candidato", "rodaje_pasadas", "max_nuevos_pasada",
+                    "prefijo_por_tienda"):
               if k in m:
                   e[k] = m[k]
           json.dump(e, open("config.json", "w", encoding="utf-8"),

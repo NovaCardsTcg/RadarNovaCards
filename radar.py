@@ -102,6 +102,7 @@ CONFIG_DEFECTO = {
     "tematica": [],
     "destacar": [],
     "excluir_patron": [],
+    "prefijo_por_tienda": {},
     "exigir_palabra": True,
     "tiendas": {k: True for k in tiendas.ADAPTADORES},
     "cada_min": {"amazon": 0, "eci": 0, "mediamarkt": 0,
@@ -204,6 +205,15 @@ def relevante(p, config: dict, exigir_palabra: bool) -> bool:
     # comprobarles el stock uno por uno.
     tematica = config.get("tematica") or []
     if tematica and not any(contiene(t, x) for x in tematica):
+        return False
+
+    # En Amazon el producto oficial se titula con la marca delante: "Pokémon:
+    # Caja de Entrenador...", "One Piece Card Game...". Lo que no empieza asi es
+    # de terceros: camisetas Name IT, Vivre Card, Dobble, cereales, Funko,
+    # archivadores, vitrinas acrilicas. Exigir "JCC" en el titulo tiraba 15
+    # productos oficiales de 53; esta regla no tira ninguno.
+    prefijos = (config.get("prefijo_por_tienda") or {}).get(p.tienda) or []
+    if prefijos and not any(t.startswith(normaliza(x)) for x in prefijos):
         return False
 
     if not exigir_palabra or not config.get("exigir_palabra", True):
