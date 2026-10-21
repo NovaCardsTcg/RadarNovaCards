@@ -543,12 +543,65 @@ def _encaja(url: str, palabras: list[str]) -> bool:
     return any(all(t in u for t in normaliza(p).split()) for p in palabras)
 
 
+# Tiendas cuya ultima consulta devolvio solo una muestra del catalogo y no
+# el catalogo entero. El orquestador no debe purgar nada de ellas.
+CATALOGO_PARCIAL: set[str] = set()
+
+
+# Busquedas de GAME para descubrir producto. Van dirigidas a TCG porque su
+# buscador devuelve como mucho una pagina corta por consulta.
+BUSQUEDAS_GAME = ["sobres pokemon", "cartas pokemon", "pokemon tcg", "caja entrenador elite",
+                  "lata pokemon", "one piece card game", "sobres one piece"]
+
+
+def _game_buscador(s) -> list[Producto]:
+    """Descubrimiento de GAME por su buscador.
+
+    El 20/10/2026 GAME retiro todo su arbol de sitemaps (404 incluso el que
+    anuncia su robots.txt). Su buscador, que en septiembre se pintaba por JS,
+    ahora sale renderizado en el servidor con tarjetas <article>, y la URL de
+    cada producto acaba en el mismo identificador numerico que daba el sitemap
+    (/252158), asi que lo ya conocido no se vuelve a anunciar como nuevo.
+    """
+    out: dict[str, Producto] = {}
+    for q in BUSQUEDAS_GAME:
+        try:
+            r = _get(s, "https://www.game.es/buscar?q=" + quote_plus(q))
+        except TiendaCaida:
+            continue
+        for art in BeautifulSoup(r.text, "lxml").select("article"):
+            a = art.select_one("a[href]")
+            if not a:
+                continue
+            href = a["href"]
+            url = href if href.startswith("http") else "https://www.game.es" + href
+            pid = url.rstrip("/").split("/")[-1]
+            texto = re.sub(r"\s+", " ", art.get_text(" ", strip=True))
+            # La tarjeta trae "Titulo Merchandising 6,99€ 42 puntos Añadir": el
+            # titulo es lo que hay antes del primer precio.
+            titulo = re.split(r"\d+\s*,\s*\d{2}\s*€|Precio recomendado|Exclusivo GAME", texto)[0]
+            titulo = re.sub(r"\s*Merchandising\s*$", "", titulo).strip() or pid
+            m = re.search(r"(\d+)\s*,\s*(\d{2})\s*€", texto)
+            precio = float("%s.%s" % m.groups()) if m else None
+            out[pid] = Producto(tienda="game", pid=pid, titulo=titulo, url=url,
+                                precio=precio)
+        time.sleep(random.uniform(0.8, 1.6))
+    if not out:
+        raise TiendaCaida("GAME: ni sitemap ni buscador devuelven productos")
+    return list(out.values())
+
+
 def game(palabras: list[str]) -> list[Producto]:
-    """GAME pinta el buscador por JS y lo protege con reCAPTCHA; el sitemap no."""
-    s = _sesion()
-    urls = _urls_sitemap(s, "https://www.game.es/sitemap/sitemap_products.xml")
+    """GAME: sitemap si existe; si no, su buscador."""
+    s = _sesion("https://www.game.es/")
+    try:
+        urls = _urls_sitemap(s, "https://www.game.es/sitemap/sitemap_products.xml")
+    except TiendaCaida:
+        urls = []
     if len(urls) < 1000:
-        raise TiendaCaida("sitemap de GAME sospechosamente corto (%d)" % len(urls))
+        CATALOGO_PARCIAL.add("game")
+        return [p for p in _game_buscador(s) if _encaja(normaliza(p.titulo), palabras)]
+    CATALOGO_PARCIAL.discard("game")
     out = []
     for u in urls:
         if not _encaja(u, palabras):

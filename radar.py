@@ -781,7 +781,11 @@ def main() -> int:
         # tirar sin miedo. En los buscadores NO se hace, porque ahi cada pasada
         # devuelve una muestra rotatoria y borrar lo que no ha salido hoy seria
         # olvidar medio catalogo y volver a avisarlo como nuevo manana.
-        if not da_precio and not primera_vez_sembrando(tienda, estado, resembrar):
+        # Salvo si la tienda ha devuelto solo una muestra (GAME por su buscador,
+        # desde que retiro el sitemap): ahi lo que no aparece sigue existiendo,
+        # y borrarlo mataria la vigilancia de reposicion de sus productos.
+        if (not da_precio and tienda not in tiendas.CATALOGO_PARCIAL
+                and not primera_vez_sembrando(tienda, estado, resembrar)):
             vivos = {p.clave for p in productos}
             for deposito in ("productos", "vigilando"):
                 estado[deposito] = {

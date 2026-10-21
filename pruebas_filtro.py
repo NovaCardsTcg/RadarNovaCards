@@ -61,6 +61,8 @@ CASOS = [
     ("game", "Bento box pokemon pikachu merchandising", False),
     ("game", "Sobre de cromos one piece netflix serie merchandising", False),
     ("game", "Pokemon escarlata nintendo switch", False),
+    ("game", "Reacondicionado Pokémon TCG Colección Ultraprémium Mega-Charizard", False),
+    ("game", "Mazo de cartas One Piece Starter deck ST-06 en Japonés", True),
     ("game", "Radio despertador luminoso pokemon bulbasaur sobre pokeball 18cm", False),
 ]
 
