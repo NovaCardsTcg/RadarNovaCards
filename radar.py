@@ -644,7 +644,13 @@ def salud_tienda(tienda: str, estado: dict, ok: bool, error: str = "") -> str | 
 
     s["fallos"] += 1
     s["ultimo_error"] = error[:200]
-    if s["fallos"] == 3 or s["fallos"] % 6 == 0:
+    ahora_ts = time.time()
+    # Antes era "al tercer fallo y luego cada 6": con pasadas de 10 minutos
+    # eso era un aviso por hora, pero con el bucle a 2 minutos fueron ~70
+    # avisos de GAME en una noche. Ahora: al tercer fallo y, mientras siga
+    # caida, como mucho uno cada 6 horas.
+    if s["fallos"] == 3 or (s["fallos"] > 3 and ahora_ts - s.get("avisado_caida", 0) >= 6 * 3600):
+        s["avisado_caida"] = ahora_ts
         return ("<b>%s</b> no responde (%d intentos seguidos).\n<code>%s</code>\n\n"
                 "Si sigue asi, seguramente han cambiado la web o han empezado a "
                 "bloquear. El resto de tiendas siguen funcionando."
@@ -849,7 +855,15 @@ def main() -> int:
         avisos.enviar(texto, imagen=p.imagen, boton=boton)
         if canal:
             publico, boton_pub = formatea_publico(tipo, p, ant, config)
-            avisos.enviar(publico, imagen=p.imagen, boton=boton_pub, destino=canal)
+            res = avisos.enviar(publico, imagen=p.imagen, boton=boton_pub, destino=canal)
+            if isinstance(res, dict) and res.get("message_id"):
+                # Se guarda el id de lo publicado para poder borrarlo desde el
+                # movil con /borrar si resulta ser ruido. En un canal con
+                # publico eso no es un detalle: ayer quedaron camisetas y
+                # juegos de mesa a la vista sin forma de quitarlos desde aqui.
+                pub = estado.setdefault("publicados", [])
+                pub.append({"id": res["message_id"], "titulo": p.titulo[:48]})
+                del pub[:-200]
             time.sleep(1.1)
         sella_enviado(p, tipo, estado)
         apunta_para_reporte(p, tipo, config, estado)

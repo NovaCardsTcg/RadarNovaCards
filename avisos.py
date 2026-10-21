@@ -187,6 +187,7 @@ AYUDA = """<b>Radar Pokemon</b>
 /vendedor amazon - en Amazon, solo lo que vende Amazon
 /canal @micanal - publicar tambien en un canal publico
 /menu - publicar y fijar el menu de busqueda en el canal
+/borrar ultimos 3 - quitar del canal los ultimos avisos (o /borrar 17 18)
 /afiliado tuetiqueta-21 - tu codigo de Amazon Afiliados
 /reporte - resumen de lo que ha pasado
 /reportes 24 - mandarmelo solo cada 24 h (off para quitarlo)
@@ -341,6 +342,37 @@ def _ejecuta(texto: str, config: dict, estado: dict) -> str:
                                "disp": None, "visto": 0}
         return ("Vigilando <b>%s</b>\nTe aviso cuando pase de agotado a comprable.\n"
                 "En la lista hay %d productos." % (esc(producto.titulo), len(vig)))
+
+    if cmd == "borrar":
+        canal = config.get("canal_publico") or ""
+        if not canal:
+            return "No hay canal configurado. Ponlo con /canal @tucanal"
+        pub = estado.get("publicados", [])
+        trozos = arg.replace(",", " ").split()
+        if trozos and trozos[0].lower() in ("ultimos", "ultimo"):
+            try:
+                n = int(trozos[1]) if len(trozos) > 1 else 1
+            except ValueError:
+                n = 1
+            ids = [x["id"] for x in pub[-n:]]
+        else:
+            ids = [int(x) for x in trozos if x.isdigit()]
+        if not ids:
+            return ("Uso: /borrar ultimos 3, o /borrar 17 18 19 con los numeros del "
+                    "mensaje en el canal (se ven en t.me/%s/NUMERO).\n"
+                    "Llevo anotados %d mensajes publicados." % (esc(canal.lstrip("@")), len(pub)))
+        borrados = 0
+        for mid in ids:
+            # Un bot administrador puede borrar cualquier mensaje del canal si
+            # tiene el permiso de eliminar; los suyos propios, siempre.
+            if _llama("deleteMessage", chat_id=canal, message_id=mid):
+                borrados += 1
+                estado["publicados"] = [x for x in estado.get("publicados", []) if x["id"] != mid]
+        if borrados < len(ids):
+            return ("Borrados %d de %d. Ultimo error: <code>%s</code>\n\n"
+                    "Si es por permisos, al bot le falta <b>Eliminar mensajes</b> en los "
+                    "administradores del canal." % (borrados, len(ids), esc(ULTIMO["error"][:100])))
+        return "Borrados %d mensajes del canal." % borrados
 
     if cmd == "menu":
         canal = config.get("canal_publico") or ""
