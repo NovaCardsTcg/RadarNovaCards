@@ -94,6 +94,11 @@ mucho un ciclo en aplicarse.
 /precio 5            avisar solo si el precio baja un 5% o más
 /max 15              máximo de avisos por ciclo
 /vendedor amazon     en Amazon, solo lo que vende Amazon
+/canal @micanal      publicar tambien en un canal publico (y /canal off)
+/menu                publicar y fijar en el canal el menu de busqueda con tu afiliado
+/borrar ultimos 3    quitar del canal los ultimos avisos (o /borrar 17 18 por numero)
+/afiliado tag-21     tu etiqueta de Amazon Afiliados
+/reporte             resumen del periodo; /reportes 24 lo manda solo cada 24 h
 /vigilar <url>       vigilar el stock de un producto concreto
 /dejar <url>         quitarlo de la lista
 /pausa  /reanudar    dejar de avisar (sigue tomando nota) y volver
