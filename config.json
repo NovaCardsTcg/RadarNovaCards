@@ -11,6 +11,8 @@
     "carrefour": 360,
     "eci": 10,
     "game": 30,
+    "juguetilandia": 60,
+    "laescotilla": 10,
     "mediamarkt": 0,
     "pokemoncenter": 30
   },
@@ -149,6 +151,8 @@
     "carrefour": true,
     "eci": true,
     "game": true,
+    "juguetilandia": true,
+    "laescotilla": true,
     "mediamarkt": true,
     "pokemoncenter": false
   }

@@ -773,7 +773,7 @@ def main() -> int:
             continue
 
         # Las tiendas de sitemap alimentan la lista de vigilancia de stock.
-        if not da_precio and tienda in ("game", "carrefour"):
+        if not da_precio and tienda in ("game", "carrefour", "juguetilandia"):
             registra_para_vigilar(tienda, productos, estado)
 
         # En las fuentes de sitemap lo que llega es el catalogo entero, asi que

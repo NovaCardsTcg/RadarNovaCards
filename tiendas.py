@@ -614,6 +614,30 @@ def game(palabras: list[str]) -> list[Producto]:
     return out
 
 
+def juguetilandia(palabras: list[str]) -> list[Producto]:
+    """Juguetilandia: sitemap con ~34.000 productos, unos 400 de Pokemon.
+
+    Descubierta analizando PokeTracker (canal StockTCG ES), donde era la tienda
+    que mas avisos daba. Precio y stock salen de los microdatos de la ficha.
+    """
+    s = _sesion("https://www.juguetilandia.com/")
+    urls = _urls_sitemap(s, "https://www.juguetilandia.com/sitemap.xmls")
+    if len(urls) < 1000:
+        raise TiendaCaida("sitemap de Juguetilandia sospechosamente corto (%d)" % len(urls))
+    out, vistos = [], set()
+    for u in urls:
+        if "/producto/" not in u or not _encaja(u, palabras):
+            continue
+        m = re.search(r"-(\d+)\.htm", u)
+        if not m or m.group(1) in vistos:
+            continue
+        vistos.add(m.group(1))
+        slug = u.rstrip("/").split("/")[-1].rsplit("-", 1)[0]
+        out.append(Producto(tienda="juguetilandia", pid=m.group(1),
+                            titulo=slug.replace("-", " ").capitalize(), url=u))
+    return out
+
+
 def pokemoncenter(palabras: list[str]) -> list[Producto]:
     """La tienda oficial: /search da 403 (Akamai), el sitemap de productos no.
 
@@ -780,6 +804,22 @@ def _lee_ficha(p: Producto) -> dict:
                 if disponible is None and ofertas.get("availability"):
                     disponible = "instock" in str(ofertas["availability"]).lower()
 
+        # Schema.org en microdatos (itemprop en el HTML en vez de ld+json): es
+        # como lo publica Juguetilandia y muchas tiendas PrestaShop.
+        if precio is None:
+            el = sopa.find(attrs={"itemprop": "price"})
+            valor = (el.get("content") or el.get_text(strip=True)) if el else None
+            if valor:
+                try:
+                    precio = float(str(valor).replace(",", "."))
+                except ValueError:
+                    pass
+        if disponible is None:
+            el = sopa.find(attrs={"itemprop": "availability"})
+            valor = (el.get("content") or el.get("href") or "") if el else ""
+            if valor:
+                disponible = "instock" in valor.lower()
+
         def meta(*props):
             for prop in props:
                 el = (sopa.find("meta", property=prop)
@@ -899,11 +939,12 @@ def detalle(p: Producto) -> Producto:
 # PrestaShop y no tienen un endpoint equivalente.
 TIENDAS_SHOPIFY = {
     "cardzone": ("CardZone", "cardzone.es"),
+    "laescotilla": ("La Escotilla", "laescotillajuegos.com"),
 }
 
 
 def _shopify(dominio: str, clave: str, palabras: list[str],
-             paginas: int = 8) -> list[Producto]:
+             paginas: int = 15) -> list[Producto]:
     s = _sesion("https://%s/" % dominio)
     out: list[Producto] = []
     for pag in range(1, paginas + 1):
@@ -952,6 +993,7 @@ ADAPTADORES = {
     "game": (game, False),
     "pokemoncenter": (pokemoncenter, False),
     "carrefour": (carrefour, False),
+    "juguetilandia": (juguetilandia, False),
 }
 
 # Las de Shopify se registran solas: anadir una tienda es tocar solo
@@ -966,6 +1008,7 @@ NOMBRES = {
     "game": "GAME",
     "pokemoncenter": "Pokemon Center",
     "carrefour": "Carrefour",
+    "juguetilandia": "Juguetilandia",
 }
 NOMBRES.update({k: n for k, (n, _d) in TIENDAS_SHOPIFY.items()})
 

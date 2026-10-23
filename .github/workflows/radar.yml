@@ -62,6 +62,10 @@ jobs:
                     "prefijo_por_tienda"):
               if k in m:
                   e[k] = m[k]
+          # Tiendas nuevas de main entran activadas; las que el usuario apago
+          # desde Telegram se quedan como estan.
+          for t, on in m.get("tiendas", {}).items():
+              e.setdefault("tiendas", {}).setdefault(t, on)
           json.dump(e, open("config.json", "w", encoding="utf-8"),
                     ensure_ascii=False, indent=2, sort_keys=True)
           print("filtros tomados de main; resto de la config, de la rama estado")
