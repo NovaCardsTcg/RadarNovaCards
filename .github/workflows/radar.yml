@@ -59,7 +59,8 @@ jobs:
           for k in ("tematica", "excluir", "excluir_patron", "destacar", "cada_min",
                     "stock_cada_min", "fichas_por_pasada", "pasadas_confirmar",
                     "horas_candidato", "rodaje_pasadas", "max_nuevos_pasada",
-                    "prefijo_por_tienda"):
+                    "prefijo_por_tienda", "amazon_busquedas", "amazon_busquedas_pasada",
+                    "agrupar_desde"):
               if k in m:
                   e[k] = m[k]
           # Tiendas nuevas de main entran activadas; las que el usuario apago

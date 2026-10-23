@@ -262,6 +262,9 @@ def _precio(texto: str) -> float | None:
 
 def normaliza(t: str) -> str:
     """Minusculas y sin acentos, para comparar sin sorpresas con los acentos."""
+    # "30º" y "30.º Aniversario" quedan en "30": si no, ni se destacaba el
+    # 30 aniversario de Toy Planet ni lo reconocia formato.py.
+    t = re.sub(r"(\d)\.?\s*[º°ª]", r"\1", t)
     t = unicodedata.normalize("NFD", t.lower())
     return "".join(c for c in t if unicodedata.category(c) != "Mn")
 
@@ -304,13 +307,17 @@ def enlace_afiliado(url: str, etiqueta: str) -> str:
 
 def amazon(palabras: list[str], paginas: int = 2,
            vendedores: list[str] | None = None,
-           afiliado: str = "") -> list[Producto]:
+           afiliado: str = "", dirigidas: list[str] = ()) -> list[Producto]:
     """Busqueda en Amazon.es, opcionalmente restringida a ciertos vendedores.
 
     Filtrar por vendedor se hace con la faceta del propio buscador de Amazon
     (rh=p_6:<id>), no adivinando el vendedor desde la ficha: el bloque de la
     caja de compra cambia de maquetacion segun el producto y no es de fiar.
     Buscando "pokemon cartas", el filtro de Amazon.es deja 18 resultados de 48.
+
+    `dirigidas` son busquedas concretas ("pokemon caja entrenador elite") que se
+    leen a una sola pagina. Las genericas devuelven sobre todo peluches y
+    camisetas: de 357 tarjetas leidas en produccion solo 19 eran TCG.
     """
     s = _sesion("https://www.amazon.es/")
     out: dict[str, Producto] = {}
@@ -320,8 +327,9 @@ def amazon(palabras: list[str], paginas: int = 2,
         ids = [VENDEDORES_AMAZON.get(v, v) for v in vendedores]
         filtro = "&rh=" + quote_plus("p_6:" + "|".join(ids))
     DIAG_AMAZON.clear()
-    for palabra in palabras:
-        for pag in range(1, paginas + 1):
+    consultas = [(p, paginas) for p in palabras] + [(q, 1) for q in dirigidas]
+    for palabra, n_pags in consultas:
+        for pag in range(1, n_pags + 1):
             # s=date-desc-rank es el orden "novedades": lo recien listado sale arriba.
             url = ("https://www.amazon.es/s?k=%s&s=date-desc-rank&page=%d%s"
                    % (quote_plus(palabra), pag, filtro))
@@ -937,18 +945,24 @@ def detalle(p: Producto) -> Producto:
 # Anadir una tienda aqui es una linea, pero tiene que ser Shopify de verdad: de
 # las tiendas de hobby espanolas probadas solo CardZone lo es, el resto van con
 # PrestaShop y no tienen un endpoint equivalente.
+#
+# El tercer valor, opcional, es una coleccion: las jugueterias grandes tienen
+# miles de productos (Toy Planet, 9.750) y solo una coleccion de TCG; leerla
+# es una peticion en vez de cuarenta y sin tazas ni disfraces de Pikachu.
 TIENDAS_SHOPIFY = {
     "cardzone": ("CardZone", "cardzone.es"),
     "laescotilla": ("La Escotilla", "laescotillajuegos.com"),
+    "toyplanet": ("Toy Planet", "www.toyplanet.com", "cartas-y-sobres-coleccionables"),
 }
 
 
 def _shopify(dominio: str, clave: str, palabras: list[str],
-             paginas: int = 15) -> list[Producto]:
+             paginas: int = 15, coleccion: str | None = None) -> list[Producto]:
     s = _sesion("https://%s/" % dominio)
+    base = "https://%s%s/products.json" % (dominio, "/collections/" + coleccion if coleccion else "")
     out: list[Producto] = []
     for pag in range(1, paginas + 1):
-        r = _get(s, "https://%s/products.json?limit=250&page=%d" % (dominio, pag))
+        r = _get(s, "%s?limit=250&page=%d" % (base, pag))
         try:
             lote = r.json().get("products") or []
         except ValueError:
@@ -978,9 +992,9 @@ def _shopify(dominio: str, clave: str, palabras: list[str],
     return out
 
 
-def _adaptador_shopify(clave: str, dominio: str):
+def _adaptador_shopify(clave: str, dominio: str, coleccion: str | None = None):
     def adaptador(palabras: list[str], **kw) -> list[Producto]:
-        return _shopify(dominio, clave, palabras)
+        return _shopify(dominio, clave, palabras, coleccion=coleccion)
     adaptador.__name__ = "shopify_" + clave
     return adaptador
 
@@ -998,8 +1012,8 @@ ADAPTADORES = {
 
 # Las de Shopify se registran solas: anadir una tienda es tocar solo
 # TIENDAS_SHOPIFY. Dan precio y stock, asi que entran como fuente completa.
-for _clave, (_nombre, _dominio) in TIENDAS_SHOPIFY.items():
-    ADAPTADORES[_clave] = (_adaptador_shopify(_clave, _dominio), True)
+for _clave, (_nombre, _dominio, *_col) in TIENDAS_SHOPIFY.items():
+    ADAPTADORES[_clave] = (_adaptador_shopify(_clave, _dominio, *_col), True)
 
 NOMBRES = {
     "amazon": "Amazon.es",
@@ -1010,5 +1024,5 @@ NOMBRES = {
     "carrefour": "Carrefour",
     "juguetilandia": "Juguetilandia",
 }
-NOMBRES.update({k: n for k, (n, _d) in TIENDAS_SHOPIFY.items()})
+NOMBRES.update({k: v[0] for k, v in TIENDAS_SHOPIFY.items()})
 

@@ -30,6 +30,7 @@ import traceback
 from datetime import datetime, timezone
 
 import avisos
+import formato
 import tiendas
 from tiendas import TiendaCaida, normaliza
 
@@ -231,56 +232,124 @@ def destacado(p, config: dict) -> bool:
     return any(contiene(t, x) for x in (config.get("destacar") or []))
 
 
-def formatea(tipo: str, p, anterior=None, config=None) -> tuple[str, tuple[str, str]]:
-    iconos = {"nuevo": "NUEVO", "stock": "VUELVE EL STOCK", "precio": "BAJA DE PRECIO"}
-    cab = "<b>%s</b> - %s" % (iconos[tipo], tiendas.NOMBRES.get(p.tienda, p.tienda))
-    if config and destacado(p, config):
+CABECERAS = {"nuevo": "\U0001F195 NUEVO", "stock": "\U0001F7E2 REPOSICIÓN",
+             "precio": "\U0001F4C9 BAJA DE PRECIO"}
+
+
+def _eur(x: float) -> str:
+    return ("%.2f €" % x).replace(".", ",")
+
+
+def bloque(tipo: str, p, anterior, config: dict, publico: bool,
+           enlazar_titulo: bool = False) -> str:
+    """Un aviso en el formato de los canales de alertas que funcionan:
+
+        🟢 REPOSICIÓN · Caos Creciente · Blister [ES]
+        Juguetilandia — 19,99 €
+        Pokémon TCG Megaevolución Caos Creciente Blister...
+
+    La primera linea dice que ha pasado y que producto es sin abrir nada; la
+    segunda, donde y cuanto. En Amazon y en el canal publico no se muestra el
+    precio: el acuerdo de Afiliados no deja publicarlo sin su API.
+    """
+    cab = "<b>%s</b>" % CABECERAS[tipo]
+    eti = formato.etiqueta(p.titulo)
+    if eti:
+        cab += " · " + avisos.esc(eti)
+    if destacado(p, config):
         cab = "⭐ " + cab
-    lineas = [cab, avisos.esc(p.titulo)]
 
-    if tipo == "precio" and anterior and anterior[0]:
+    tienda = tiendas.NOMBRES.get(p.tienda, p.tienda)
+    if publico and p.tienda == "amazon":
+        precio = "precio en Amazon"
+    elif tipo == "precio" and anterior and anterior[0] and p.precio:
         pct = (anterior[0] - p.precio) / anterior[0] * 100
-        lineas.append("<s>%.2f EUR</s>  <b>%.2f EUR</b>  (-%.0f%%)"
-                      % (anterior[0], p.precio, pct))
-        if getattr(p, "sin_confirmar", False):
-            lineas.append("<i>No he podido abrir la ficha para confirmarlo.</i>")
+        precio = "<s>%s</s> <b>%s</b> (-%.0f%%)" % (_eur(anterior[0]), _eur(p.precio), pct)
     elif p.precio is not None:
-        lineas.append("<b>%.2f EUR</b>" % p.precio)
+        precio = "<b>%s</b>" % _eur(p.precio)
     else:
-        lineas.append("(precio sin confirmar, mira la ficha)")
+        precio = "precio en la ficha"
+    linea_tienda = "%s — %s" % (tienda, precio)
 
-    return "\n".join(lineas), ("Ver producto", p.url)
+    titulo = avisos.esc(p.titulo)
+    if enlazar_titulo:
+        titulo = '<a href="%s">%s</a>' % (avisos.esc(p.url), titulo)
+    lineas = [cab, linea_tienda, titulo]
+    if not publico and getattr(p, "sin_confirmar", False):
+        lineas.append("<i>No he podido abrir la ficha para confirmarlo.</i>")
+    return "\n".join(lineas)
+
+
+def apunta_publicado(res, titulo: str, estado: dict):
+    """Guarda el id de lo publicado en el canal para poder quitarlo con /borrar.
+
+    En un canal con publico eso no es un detalle: quedaron camisetas y juegos
+    de mesa a la vista sin forma de quitarlos desde el movil.
+    """
+    if isinstance(res, dict) and res.get("message_id"):
+        pub = estado.setdefault("publicados", [])
+        pub.append({"id": res["message_id"], "titulo": titulo[:48]})
+        del pub[:-200]
+
+
+def envia_agrupado(lote, config: dict, estado: dict, publico: bool,
+                   destino: str | None = None):
+    """Manda varios avisos en uno o mas mensajes de texto, sin pasar de 4096."""
+    SEP = "\n\n"
+    bloques = [bloque(tipo, p, ant, config, publico, enlazar_titulo=True)
+               for tipo, p, ant in lote]
+    trozos, actual = [], []
+    for b in bloques:
+        if actual and len(SEP.join(actual + [b])) > 3800:
+            trozos.append(actual)
+            actual = []
+        actual.append(b)
+    if actual:
+        trozos.append(actual)
+    for trozo in trozos:
+        cab = "📦 <b>%d novedad%s</b>" % (len(trozo), "es" if len(trozo) > 1 else "")
+        res = avisos.enviar(cab + SEP + SEP.join(trozo), destino=destino)
+        if publico:
+            apunta_publicado(res, "%d avisos agrupados" % len(trozo), estado)
+        time.sleep(1.1)
+
+
+def siembra_amazon(fn, dirigidas, extra, config, estado):
+    """Absorbe en silencio lo que trae una busqueda de Amazon recien anadida.
+
+    Una busqueda nueva saca productos que llevan meses a la venta pero que el
+    radar no habia visto nunca; sin esto saldrian todos como NUEVO en el canal.
+    Se hace una sola vez por busqueda, y solo se da por sembrada si Amazon ha
+    respondido: si hay muro, se reintenta en la siguiente pasada.
+    """
+    hechas = estado.setdefault("amazon_sembradas", [])
+    nuevas = [q for q in dirigidas if q not in hechas]
+    if not nuevas:
+        return
+    try:
+        vistos = fn([], dirigidas=nuevas,
+                    **{k: v for k, v in extra.items() if k != "dirigidas"})
+    except tiendas.TiendaCaida as e:
+        print("[amazon] siembra de busquedas aplazada: %s" % e)
+        return
+    n = 0
+    for p in vistos:
+        if relevante(p, config, True) and p.clave not in estado["productos"]:
+            estado["productos"][p.clave] = [p.precio, p.disponible]
+            n += 1
+    hechas.extend(nuevas)
+    print("[amazon] %d busquedas nuevas sembradas, %d productos absorbidos sin aviso"
+          % (len(nuevas), n))
+
+
+def formatea(tipo: str, p, anterior=None, config=None) -> tuple[str, tuple[str, str]]:
+    return bloque(tipo, p, anterior, config or {}, publico=False), ("Ver producto", p.url)
 
 
 def formatea_publico(tipo: str, p, anterior, config: dict) -> tuple[str, tuple[str, str]]:
-    """El mismo aviso, redactado para el canal publico.
-
-    Difiere del privado en una cosa que no es estetica sino legal: en Amazon no
-    se publica el precio. El acuerdo de Afiliados solo deja mostrar precios si
-    los sirve Amazon o si vienen de su API oficial, y los de aqui salen de
-    raspar la web. Para uso propio da igual; publicarlos es la clase de
-    incumplimiento por la que cierran cuentas, y sin aviso previo.
-
-    Las demas tiendas no estan sujetas a ese acuerdo, asi que ahi si va el
-    precio, que es justo lo que hace util el aviso.
-    """
-    cabeceras = {"nuevo": "NUEVO", "stock": "YA DISPONIBLE", "precio": "BAJA DE PRECIO"}
-    tienda = tiendas.NOMBRES.get(p.tienda, p.tienda)
-    marca = "⭐ " if destacado(p, config) else ""
-    lineas = ["%s<b>%s</b> · %s" % (marca, cabeceras[tipo], tienda),
-              avisos.esc(p.titulo)]
-
-    if p.tienda == "amazon":
-        lineas.append("<i>Precio en Amazon</i>" if tipo != "precio"
-                      else "<i>Ha bajado de precio. Miralo en Amazon</i>")
-    elif tipo == "precio" and anterior and anterior[0] and p.precio:
-        pct = (anterior[0] - p.precio) / anterior[0] * 100
-        lineas.append("<s>%.2f EUR</s> <b>%.2f EUR</b> (-%.0f%%)"
-                      % (anterior[0], p.precio, pct))
-    elif p.precio is not None:
-        lineas.append("<b>%.2f EUR</b>" % p.precio)
-
-    return "\n".join(lineas), ("Ver producto", p.url)
+    """El mismo aviso para el canal publico: igual que el privado pero sin el
+    precio de Amazon, que el acuerdo de Afiliados no deja publicar sin su API."""
+    return bloque(tipo, p, anterior, config, publico=True), ("Ver producto", p.url)
 
 
 def baja_bastante(antes, ahora, config: dict) -> bool:
@@ -752,6 +821,16 @@ def main() -> int:
                     extra["vendedores"] = config["amazon_vendedores"]
                 if config.get("amazon_afiliado"):
                     extra["afiliado"] = config["amazon_afiliado"]
+                dirigidas = config.get("amazon_busquedas") or []
+                if dirigidas:
+                    siembra_amazon(fn, dirigidas, extra, config, estado)
+                    # Unas pocas por pasada, rotando: todas juntas serian veinte
+                    # peticiones seguidas cada cuarto de hora, y eso es lo que
+                    # hace saltar el muro de Amazon.
+                    n = max(1, config.get("amazon_busquedas_pasada", 3))
+                    i = estado.get("amazon_rotacion", 0) % len(dirigidas)
+                    extra["dirigidas"] = (dirigidas[i:] + dirigidas[:i])[:n]
+                    estado["amazon_rotacion"] = i + n
             productos = fn(config["palabras"], **extra)
             productos = [p for p in productos if relevante(p, config, da_precio)]
             estado.setdefault("ultima_tienda", {})[tienda] = time.time()
@@ -864,20 +943,26 @@ def main() -> int:
 
     tope = config.get("max_avisos", 15)
     canal = config.get("canal_publico", "")
-    for tipo, p, ant in pendientes[:tope]:
+    lote = pendientes[:tope]
+    # Varios avisos de golpe (un reabastecimiento de una tienda, por ejemplo)
+    # van en un solo mensaje con los titulos enlazados, como PokeTracker: diez
+    # fotos seguidas entierran el canal y la gente silencia. Uno o dos siguen
+    # yendo con foto y boton, que es lo que mejor se lee en el movil.
+    if len(lote) >= config.get("agrupar_desde", 3):
+        envia_agrupado(lote, config, estado, publico=False)
+        if canal:
+            envia_agrupado(lote, config, estado, publico=True, destino=canal)
+        for tipo, p, ant in lote:
+            sella_enviado(p, tipo, estado)
+            apunta_para_reporte(p, tipo, config, estado)
+        lote = []
+    for tipo, p, ant in lote:
         texto, boton = formatea(tipo, p, ant, config)
         avisos.enviar(texto, imagen=p.imagen, boton=boton)
         if canal:
             publico, boton_pub = formatea_publico(tipo, p, ant, config)
             res = avisos.enviar(publico, imagen=p.imagen, boton=boton_pub, destino=canal)
-            if isinstance(res, dict) and res.get("message_id"):
-                # Se guarda el id de lo publicado para poder borrarlo desde el
-                # movil con /borrar si resulta ser ruido. En un canal con
-                # publico eso no es un detalle: ayer quedaron camisetas y
-                # juegos de mesa a la vista sin forma de quitarlos desde aqui.
-                pub = estado.setdefault("publicados", [])
-                pub.append({"id": res["message_id"], "titulo": p.titulo[:48]})
-                del pub[:-200]
+            apunta_publicado(res, p.titulo, estado)
             time.sleep(1.1)
         sella_enviado(p, tipo, estado)
         apunta_para_reporte(p, tipo, config, estado)

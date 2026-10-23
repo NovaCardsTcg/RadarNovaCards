@@ -16,6 +16,11 @@ cfg = radar.carga(radar.CONFIG, radar.CONFIG_DEFECTO)
 
 # (tienda, titulo, debe_pasar)
 CASOS = [
+    # Toy Planet (Shopify): oficiales que el filtro tiraba
+    ("toyplanet", "Pokémon TCG 30º Aniversario Poster Collection con 3 Sobres y 3 Cartas Promocionales +6 años", True),
+    ("toyplanet", "Sobre Pokémon Fuegos Fantasmales surtidos", True),
+    ("toyplanet", "One piece  póster maxi 91,5x61  gear 5th goofy", False),
+    ("toyplanet", "Taza Pokémon Gengar y Mimikyu 320 ml", False),
     # Amazon: producto oficial sellado SIN "JCC" en el titulo (no se pueden perder)
     ("amazon", "Pokémon: Caja de Entrenador Élite de Megaevolución-Caos Creciente (1 Carta de promoción)", True),
     ("amazon", "Pokémon: Baraja Combate de Liga de Mewtwo ex del Team Rocket (1 baraja de 60 Cartas)", True),
