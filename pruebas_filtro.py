@@ -16,6 +16,11 @@ cfg = radar.carga(radar.CONFIG, radar.CONFIG_DEFECTO)
 
 # (tienda, titulo, debe_pasar)
 CASOS = [
+    # Frikimonkey (Shopify): sellado dentro, accesorios y gradeadas fuera
+    ("frikimonkey", "Pokemon Pack Scarlet & Violet", True),
+    ("frikimonkey", "Shining Fates Elite Trainer Box (English) | Pokémon TCG", True),
+    ("frikimonkey", "PET Protector for Pokémon Elite Trainer Box (10 Pack) | Friki Monkey", False),
+    ("frikimonkey", "Charizard – Pokémon GO 010/078 (PCA 9 or Higher Mint, 2022)", False),
     # ToysRUs y Flash Store: oficiales que el filtro tiraba
     ("toysrus", "Elite Trainer Box Rivales Predestinados", True),
     ("toysrus", "Pokémon - Caja Entrenador de Élite Héroes Ascendentes (esp)", True),

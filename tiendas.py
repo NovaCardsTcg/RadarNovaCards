@@ -953,6 +953,8 @@ TIENDAS_SHOPIFY = {
     "cardzone": ("CardZone", "cardzone.es"),
     "laescotilla": ("La Escotilla", "laescotillajuegos.com"),
     "toyplanet": ("Toy Planet", "www.toyplanet.com", "cartas-y-sobres-coleccionables"),
+    # Catalogo pequeno (~130 productos, una pagina): se lee entero.
+    "frikimonkey": ("Frikimonkey", "frikimonkey.com"),
 }
 
 

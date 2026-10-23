@@ -27,6 +27,7 @@
     "carrefour": 360,
     "eci": 10,
     "flashstore": 10,
+    "frikimonkey": 15,
     "game": 30,
     "juguetilandia": 60,
     "laescotilla": 10,
@@ -172,7 +173,8 @@
     "entrenador de elite",
     "tin",
     "starter deck",
-    "deck"
+    "deck",
+    "pokemon pack"
   ],
   "tiendas": {
     "amazon": true,
@@ -180,6 +182,7 @@
     "carrefour": true,
     "eci": true,
     "flashstore": true,
+    "frikimonkey": true,
     "game": true,
     "juguetilandia": true,
     "laescotilla": true,
