@@ -90,6 +90,10 @@ class Producto:
     imagen: str | None = None
     # Se marca cuando no se ha podido contrastar el precio con la ficha.
     sin_confirmar: bool = False
+    # Lo que la tienda dice del producto aparte del titulo (tipo, marca,
+    # etiquetas: "Carta Gradeada", "Sealed", "pokemon"). Solo lo da Shopify;
+    # la app lo usa para clasificar mejor. El canal no lo mira.
+    etiquetas: str = ""
 
     @property
     def clave(self) -> str:
@@ -979,6 +983,8 @@ def _shopify(dominio: str, clave: str, palabras: list[str],
             except (TypeError, ValueError):
                 precio = None
             imagen = (p.get("images") or [{}])[0].get("src")
+            etiquetas = " | ".join(x for x in [p.get("product_type"), p.get("vendor"),
+                                               *(p.get("tags") or [])] if x)
             out.append(Producto(
                 tienda=clave, pid=str(p.get("id")),
                 titulo=p.get("title") or "",
@@ -987,6 +993,7 @@ def _shopify(dominio: str, clave: str, palabras: list[str],
                 # Agotado en Shopify es available=False en todas las variantes.
                 disponible=any(x.get("available") for x in variantes),
                 imagen=imagen,
+                etiquetas=etiquetas[:300],
             ))
         time.sleep(random.uniform(0.3, 0.8))
     if not out:

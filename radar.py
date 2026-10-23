@@ -994,6 +994,9 @@ def main() -> int:
 
     # Avisos de las alertas de la app (y respuestas a comentarios).
     app_db.envia_pendientes()
+    aviso_reportes = app_db.avisa_reportes(estado)
+    if aviso_reportes:
+        avisos_sistema.append(aviso_reportes)
 
     for msg in avisos_sistema:
         avisos.enviar(msg, silencioso=True)

@@ -89,8 +89,10 @@ def _primera(t: str, tabla):
     return None
 
 
-def juego_de(titulo: str) -> str | None:
-    t = " %s " % normaliza(titulo)
+def juego_de(titulo: str, etiquetas: str = "") -> str | None:
+    # Las etiquetas de la tienda ("pokemon", vendor "Pokémon") cuentan igual que
+    # el titulo: una gradeada japonesa antigua no suele llevar "Pokémon" en el nombre.
+    t = " %s " % normaliza(titulo + " " + etiquetas)
     for terminos, j in JUEGOS:
         if any(x in t for x in terminos):
             return j
@@ -107,15 +109,22 @@ def config_app(config: dict) -> dict:
 def categoria_de(p, config_app_: dict, relevante) -> tuple[str, str | None, str | None] | None:
     """(categoria, subtipo, gradeo), o None si no es de cartas coleccionables."""
     t = normaliza(p.titulo)
-    juego = juego_de(p.titulo)
+    etiquetas = normaliza(getattr(p, "etiquetas", "") or "")
+    juego = juego_de(p.titulo, etiquetas)
     g = GRADEO.search(p.titulo)
-    if g and (juego or _contiene(t, DE_CARTAS)):
+    # Lo que la propia tienda clasifica (CardZone: "Carta Gradeada", "Carta
+    # Suelta") manda sobre lo que se deduce del titulo.
+    if g and (juego or _contiene(t, DE_CARTAS) or "gradeada" in etiquetas):
         empresa = g.group(1).upper().replace("BECKETT", "BGS")
         return "gradeada", empresa, "%s %s" % (empresa, g.group(2).replace(",", "."))
+    if "carta gradeada" in etiquetas or "graded" in etiquetas.split(" | "):
+        return "gradeada", None, None
     acc = _primera(t, ACCESORIOS)
     if acc and (juego or _contiene(t, DE_CARTAS)):
         return "accesorio", acc, None
-    if juego and SUELTA.search(p.titulo):
+    # Una carta suelta que la tienda etiqueta como tal cuenta aunque el titulo no
+    # diga el juego ("Feebas (2024) SV8 JP"): la tienda es de cartas.
+    if "carta suelta" in etiquetas or "single" in etiquetas.split(" | ") or (juego and SUELTA.search(p.titulo)):
         return "suelta", _primera(t, RAREZAS), None
     if juego and relevante(p, config_app_, True):
         return "sellado", None, None
@@ -131,7 +140,7 @@ def para_app(productos: list, config: dict, relevante, destacado) -> list[dict]:
             continue
         categoria, subtipo, gradeo = cat
         c = formato.clasifica(p.titulo)
-        juego = juego_de(p.titulo) or "otro"
+        juego = juego_de(p.titulo, getattr(p, "etiquetas", "") or "") or "otro"
         sellado = categoria == "sellado"
         out.append({
             "pid": p.pid, "titulo": p.titulo, "url": p.url, "imagen": p.imagen,
@@ -206,6 +215,82 @@ def _push(sub: dict, datos: dict) -> bool:
     except Exception:
         pass
     return False
+
+
+# ---------------------------------------------------------------- 3. moderar
+
+AYUDA_MODERACION = """
+<b>App Cromel</b> (solo si hay Supabase)
+/moderar - reportes pendientes de la app, numerados
+/ocultar 2 - ocultar el chollo del reporte 2 (no vuelve aunque se reponga)
+/mostrar 2 - volver a enseñarlo
+/resolver 2 - cerrar el reporte sin tocar nada
+/bloquear 2 - ocultar ese comentario y bloquear a su autor 7 dias"""
+
+COMANDOS = ("moderar", "ocultar", "mostrar", "resolver", "bloquear")
+
+
+def _reportes(estado: dict) -> list[dict]:
+    """Lista numerada; los numeros se guardan para que /ocultar 2 sepa a que se refiere."""
+    lista = _rpc("reportes_pendientes", {"p_lim": 20}) or []
+    estado["moderacion"] = {str(i + 1): {"chollo": r["chollo_id"], "comentario": r["comentario_id"]}
+                            for i, r in enumerate(lista)}
+    return lista
+
+
+def comando(cmd: str, arg: str, estado: dict) -> str:
+    esc = avisos.esc
+    if not activo():
+        return "La app no esta conectada (faltan SUPABASE_URL y SUPABASE_SERVICE_KEY)."
+    try:
+        if cmd == "moderar":
+            lista = _reportes(estado)
+            if not lista:
+                return "Sin reportes pendientes en la app."
+            lineas = []
+            for i, r in enumerate(lista, 1):
+                que = ("\U0001F4AC %s: “%s”" % (esc(r.get("autor") or "?"), esc((r.get("texto") or "")[:80]))
+                       if r.get("comentario_id") else "\U0001F4E6 %s" % esc((r.get("titulo") or "")[:70]))
+                lineas.append("<b>%d</b>. [%s x%s] %s" % (i, esc(r["motivo"]), r.get("n_reportes", 1), que))
+            return "\U0001F6A9 <b>Reportes pendientes</b>\n" + "\n".join(lineas) + "\n\n/ocultar N · /mostrar N · /resolver N · /bloquear N"
+        ref = (estado.get("moderacion") or {}).get(arg.strip())
+        if not ref:
+            return "Primero /moderar y luego el numero: /%s 2" % cmd
+        if cmd == "ocultar":
+            # Un reporte de comentario oculta solo el comentario, nunca el chollo.
+            if ref["comentario"]:
+                res = _rpc("admin_modera", {"p_accion": "ocultar_comentario", "p_comentario": ref["comentario"]})
+            else:
+                res = _rpc("admin_modera", {"p_accion": "ocultar_chollo", "p_chollo": ref["chollo"]})
+        elif cmd == "mostrar":
+            res = _rpc("admin_modera", {"p_accion": "mostrar_chollo", "p_chollo": ref["chollo"]})
+        elif cmd == "resolver":
+            res = _rpc("admin_modera", {"p_accion": "resolver", "p_chollo": ref["chollo"] if not ref["comentario"] else None,
+                                        "p_comentario": ref["comentario"]})
+        else:  # bloquear
+            if not ref["comentario"]:
+                return "Ese reporte es de un chollo, no de un comentario: usa /ocultar o /resolver."
+            res = _rpc("admin_modera", {"p_accion": "bloquear_usuario", "p_comentario": ref["comentario"], "p_dias": 7})
+        return "✅ %s" % esc(str(res or "hecho"))
+    except Exception as e:
+        return "No he podido hablar con la app: %s" % esc(str(e)[:120])
+
+
+def avisa_reportes(estado: dict) -> str | None:
+    """Mensaje al admin cuando entran reportes nuevos (como mucho uno por pasada)."""
+    if not activo():
+        return None
+    try:
+        lista = _rpc("reportes_pendientes", {"p_lim": 20}) or []
+    except Exception:
+        return None
+    vistos = set(estado.get("reportes_vistos") or [])
+    nuevos = [r for r in lista if r["id"] not in vistos]
+    estado["reportes_vistos"] = [r["id"] for r in lista][:200]
+    if not nuevos:
+        return None
+    return ("\U0001F6A9 <b>%d reporte%s nuevo%s en la app</b> (%d pendientes). Mira /moderar."
+            % (len(nuevos), "s" if len(nuevos) > 1 else "", "s" if len(nuevos) > 1 else "", len(lista)))
 
 
 def envia_pendientes() -> int:

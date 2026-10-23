@@ -196,7 +196,14 @@ AYUDA = """<b>Radar Pokemon</b>
 /pausa - dejar de avisar (sigue tomando nota)
 /reanudar - volver a avisar
 /prueba - manda un aviso de prueba
-/ayuda - esto"""
+/ayuda - esto
+
+<b>App Cromel</b> (solo con Supabase conectado)
+/moderar - reportes pendientes de la app, numerados
+/ocultar 2 - ocultar el chollo o comentario del reporte 2
+/mostrar 2 - volver a ensenar ese chollo
+/resolver 2 - cerrar el reporte sin tocar nada
+/bloquear 2 - ocultar ese comentario y bloquear a su autor 7 dias"""
 
 
 def leer_comandos(estado: dict, config: dict) -> list[str]:
@@ -433,6 +440,12 @@ def _ejecuta(texto: str, config: dict, estado: dict) -> str:
 
     if cmd == "estado":
         return resumen(estado, config)
+
+    # Moderacion de la app Cromel Chollos. Import local: app_db importa este
+    # modulo para mandar mensajes, y asi no hay ciclo al cargar.
+    import app_db
+    if cmd in app_db.COMANDOS:
+        return app_db.comando(cmd, arg, estado)
 
     return "No conozco /%s. Mira /ayuda" % esc(cmd)
 
