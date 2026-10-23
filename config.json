@@ -26,12 +26,14 @@
     "cardzone": 5,
     "carrefour": 360,
     "eci": 10,
+    "flashstore": 10,
     "game": 30,
     "juguetilandia": 60,
     "laescotilla": 10,
     "mediamarkt": 0,
     "pokemoncenter": 30,
-    "toyplanet": 10
+    "toyplanet": 10,
+    "toysrus": 10
   },
   "canal_publico": "@cromeltcg",
   "destacar": [
@@ -134,6 +136,9 @@
   },
   "reporte_cada_h": 24,
   "rodaje_pasadas": 12,
+  "sin_exigir_palabra": [
+    "toysrus"
+  ],
   "stock_cada_min": 10,
   "tematica": [
     "cartas",
@@ -161,18 +166,26 @@
     "display box",
     "minilata",
     "mini lata",
-    "sobre pokemon"
+    "sobre pokemon",
+    "sobre",
+    "elite trainer",
+    "entrenador de elite",
+    "tin",
+    "starter deck",
+    "deck"
   ],
   "tiendas": {
     "amazon": true,
     "cardzone": true,
     "carrefour": true,
     "eci": true,
+    "flashstore": true,
     "game": true,
     "juguetilandia": true,
     "laescotilla": true,
     "mediamarkt": true,
     "pokemoncenter": false,
-    "toyplanet": true
+    "toyplanet": true,
+    "toysrus": true
   }
 }

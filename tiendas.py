@@ -992,6 +992,88 @@ def _shopify(dominio: str, clave: str, palabras: list[str],
     return out
 
 
+# Las WooCommerce tienen algo parecido: la Store API (/wp-json/wc/store/v1),
+# publica, en JSON, con precio y stock. Se busca por termino porque el catalogo
+# entero de una tienda de hobby mezcla de todo.
+TIENDAS_WOO = {
+    "flashstore": ("Flash Store", "flashstore.es"),
+}
+BUSQUEDAS_WOO = ["pokemon", "one piece"]
+
+
+def _woocommerce(dominio: str, clave: str) -> list[Producto]:
+    s = _sesion("https://%s/" % dominio)
+    out: dict[str, Producto] = {}
+    for q in BUSQUEDAS_WOO:
+        for pag in range(1, 11):
+            r = _get(s, "https://%s/wp-json/wc/store/v1/products?search=%s&per_page=100&page=%d"
+                     % (dominio, quote_plus(q), pag))
+            try:
+                lote = r.json()
+            except ValueError:
+                raise TiendaCaida("%s no devuelve JSON en la Store API" % dominio)
+            if not isinstance(lote, list) or not lote:
+                break
+            for p in lote:
+                pr = p.get("prices") or {}
+                try:
+                    precio = int(pr["price"]) / 10 ** int(pr.get("currency_minor_unit", 2))
+                except (KeyError, TypeError, ValueError):
+                    precio = None
+                out[str(p.get("id"))] = Producto(
+                    tienda=clave, pid=str(p.get("id")),
+                    titulo=BeautifulSoup(p.get("name") or "", "lxml").get_text(),
+                    url=p.get("permalink") or "", precio=precio,
+                    disponible=bool(p.get("is_in_stock")),
+                    imagen=((p.get("images") or [{}])[0]).get("src"))
+            if len(lote) < 100:
+                break
+            time.sleep(random.uniform(0.3, 0.8))
+    if not out:
+        raise TiendaCaida("%s no ha devuelto ningun producto" % dominio)
+    return list(out.values())
+
+
+def toysrus(palabras: list[str]) -> list[Producto]:
+    """ToysRUs: la categoria Pokemon entera (~260 productos, 7 paginas).
+
+    El listado trae precio y estado en la clase de cada tarjeta:
+    birch-product-inStock, -outOfStock u -onlineNonStock (solo en tienda
+    fisica, que para el canal es como agotado). Asi da los tres avisos sin
+    abrir fichas. Tiene mucho TCG agotado esperando reposicion.
+    """
+    s = _sesion("https://www.toysrus.es/")
+    out: dict[str, Producto] = {}
+    paginas = ["https://www.toysrus.es/Pokemon/c/Pokemon?q=%%3Arelevance&page=%d" % n
+               for n in range(12)]
+    paginas += ["https://www.toysrus.es/search?q=one+piece+card+game%%3Arelevance&page=%d" % n
+                for n in range(2)]
+    for url in paginas:
+        h = _get(s, url).text
+        nuevos = 0
+        for t in h.split('class="product-item')[1:]:
+            estado = t[:t.find('"')]
+            m = re.search(r'class="name js-analytics-productClick" href="([^"]+)"[^>]*'
+                          r'data-product-code="(K\w+)"[^>]*title="([^"]*)"', t)
+            if not m or m.group(2) in out:
+                continue
+            pr = re.search(r'class="price[^"]*">\s*([\d.,]+)\s*€', t)
+            img = re.search(r'<img[^>]+src="(/medias/[^"]+)"', t)
+            out[m.group(2)] = Producto(
+                tienda="toysrus", pid=m.group(2), titulo=unescape(m.group(3)),
+                url="https://www.toysrus.es" + m.group(1),
+                precio=_precio(pr.group(1)) if pr else None,
+                disponible="inStock" in estado,
+                imagen="https://www.toysrus.es" + unescape(img.group(1)) if img else None)
+            nuevos += 1
+        if not nuevos:
+            break
+        time.sleep(random.uniform(0.8, 1.6))
+    if len(out) < 20:
+        raise TiendaCaida("ToysRUs: listado sospechosamente corto (%d)" % len(out))
+    return list(out.values())
+
+
 def _adaptador_shopify(clave: str, dominio: str, coleccion: str | None = None):
     def adaptador(palabras: list[str], **kw) -> list[Producto]:
         return _shopify(dominio, clave, palabras, coleccion=coleccion)
@@ -1008,12 +1090,15 @@ ADAPTADORES = {
     "pokemoncenter": (pokemoncenter, False),
     "carrefour": (carrefour, False),
     "juguetilandia": (juguetilandia, False),
+    "toysrus": (toysrus, True),
 }
 
 # Las de Shopify se registran solas: anadir una tienda es tocar solo
 # TIENDAS_SHOPIFY. Dan precio y stock, asi que entran como fuente completa.
 for _clave, (_nombre, _dominio, *_col) in TIENDAS_SHOPIFY.items():
     ADAPTADORES[_clave] = (_adaptador_shopify(_clave, _dominio, *_col), True)
+for _clave, (_nombre, _dominio) in TIENDAS_WOO.items():
+    ADAPTADORES[_clave] = ((lambda d, c: lambda palabras, **kw: _woocommerce(d, c))(_dominio, _clave), True)
 
 NOMBRES = {
     "amazon": "Amazon.es",
@@ -1023,6 +1108,8 @@ NOMBRES = {
     "pokemoncenter": "Pokemon Center",
     "carrefour": "Carrefour",
     "juguetilandia": "Juguetilandia",
+    "toysrus": "ToysRUs",
 }
 NOMBRES.update({k: v[0] for k, v in TIENDAS_SHOPIFY.items()})
+NOMBRES.update({k: v[0] for k, v in TIENDAS_WOO.items()})
 

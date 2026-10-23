@@ -16,6 +16,15 @@ cfg = radar.carga(radar.CONFIG, radar.CONFIG_DEFECTO)
 
 # (tienda, titulo, debe_pasar)
 CASOS = [
+    # ToysRUs y Flash Store: oficiales que el filtro tiraba
+    ("toysrus", "Elite Trainer Box Rivales Predestinados", True),
+    ("toysrus", "Pokémon - Caja Entrenador de Élite Héroes Ascendentes (esp)", True),
+    ("toysrus", "Pokémon - Summer Tin Box (Esp) (Varios modelos)", True),
+    ("toysrus", "Taza cerámica Elite 380 ml en caja - Pokémon Metal Meltdown", False),
+    ("toysrus", "Ravensburger - Pokemon - Puzzle 3D Storage Box Pokémon Ravensburger", False),
+    ("flashstore", "Pokémon 151 Sobre Japón", True),
+    ("flashstore", "One Piece OP-14 Warlords of the Sea Sobre", True),
+    ("flashstore", "One Piece ST-29 EggHead Starter Deck", True),
     # Toy Planet (Shopify): oficiales que el filtro tiraba
     ("toyplanet", "Pokémon TCG 30º Aniversario Poster Collection con 3 Sobres y 3 Cartas Promocionales +6 años", True),
     ("toyplanet", "Sobre Pokémon Fuegos Fantasmales surtidos", True),

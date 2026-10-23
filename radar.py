@@ -219,6 +219,10 @@ def relevante(p, config: dict, exigir_palabra: bool) -> bool:
 
     if not exigir_palabra or not config.get("exigir_palabra", True):
         return True
+    # Tiendas que se leen por su categoria de Pokemon: ahi todo es Pokemon
+    # aunque el titulo no lo diga ("Elite Trainer Box Rivales Predestinados").
+    if p.tienda in config.get("sin_exigir_palabra", []):
+        return True
     # Todas las palabras del termino, no solo la primera. Mirando la primera,
     # "cartas pokemon" dejaba pasar cualquier cosa con "cartas" en el titulo:
     # entraban barajas de Disney y juegos de cartas de Stitch.
