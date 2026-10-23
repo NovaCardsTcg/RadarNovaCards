@@ -29,6 +29,7 @@ import time
 import traceback
 from datetime import datetime, timezone
 
+import app_db
 import avisos
 import formato
 import tiendas
@@ -836,6 +837,9 @@ def main() -> int:
                     extra["dirigidas"] = (dirigidas[i:] + dirigidas[:i])[:n]
                     estado["amazon_rotacion"] = i + n
             productos = fn(config["palabras"], **extra)
+            # La app ve el catalogo entero (accesorios, gradeadas...); el
+            # canal, solo lo que pasa el filtro. Sin claves de Supabase, nada.
+            app_db.sincroniza(tienda, productos, config, relevante, destacado)
             productos = [p for p in productos if relevante(p, config, da_precio)]
             estado.setdefault("ultima_tienda", {})[tienda] = time.time()
             msg = salud_tienda(tienda, estado, ok=True)
@@ -987,6 +991,9 @@ def main() -> int:
             "Rodaje terminado: ya conozco %d productos. A partir de ahora un "
             "aviso de NUEVO es un alta de verdad, no ruido del buscador."
             % len(estado["productos"]))
+
+    # Avisos de las alertas de la app (y respuestas a comentarios).
+    app_db.envia_pendientes()
 
     for msg in avisos_sistema:
         avisos.enviar(msg, silencioso=True)

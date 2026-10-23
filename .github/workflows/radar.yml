@@ -84,6 +84,13 @@ jobs:
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          # App Cromel Chollos (opcional): sin estos secretos el radar no toca
+          # la app y sigue solo con el canal. Ver app_db.py.
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
+          VAPID_SUBJECT: ${{ secrets.VAPID_SUBJECT }}
+          CROMEL_APP_URL: ${{ vars.CROMEL_APP_URL }}
         run: |
           # El bucle va cada 2 minutos, pero eso NO es lo que se pregunta a
           # cada tienda: de eso manda `cada_min` en config.json. Amazon a 2
