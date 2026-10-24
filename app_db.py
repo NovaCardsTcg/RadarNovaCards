@@ -149,6 +149,7 @@ def para_app(productos: list, config: dict, relevante, destacado) -> list[dict]:
             "tipo": c["tipo"] if sellado else None, "idioma": c["idioma"],
             "destacado": bool(destacado(p, config)),
             "precio_cents": round(p.precio * 100) if p.precio else None,
+            "precio_anterior_cents": round(p.precio_anterior * 100) if getattr(p, "precio_anterior", None) else None,
             "en_stock": p.disponible,
         })
     return out

@@ -1,6 +1,6 @@
 {
   "agrupar_desde": 3,
-  "amazon_afiliado": "novacards-21",
+  "amazon_afiliado": "",
   "amazon_busquedas": [
     "pokemon caja entrenador elite",
     "pokemon lata jcc",
@@ -16,6 +16,7 @@
     "one piece card game starter deck"
   ],
   "amazon_busquedas_pasada": 3,
+  "amazon_precio_publico": true,
   "amazon_vendedores": [
     "amazon.es"
   ],

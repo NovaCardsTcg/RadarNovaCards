@@ -265,7 +265,9 @@ def bloque(tipo: str, p, anterior, config: dict, publico: bool,
         cab = "⭐ " + cab
 
     tienda = tiendas.NOMBRES.get(p.tienda, p.tienda)
-    if publico and p.tienda == "amazon":
+    # Con afiliado de Amazon, el acuerdo no deja publicar sus precios; sin
+    # afiliado (denegado el 24/10/2026) si. "amazon_precio_publico" en config.json.
+    if publico and p.tienda == "amazon" and not config.get("amazon_precio_publico"):
         precio = "precio en Amazon"
     elif tipo == "precio" and anterior and anterior[0] and p.precio:
         pct = (anterior[0] - p.precio) / anterior[0] * 100

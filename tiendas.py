@@ -94,6 +94,11 @@ class Producto:
     # etiquetas: "Carta Gradeada", "Sealed", "pokemon"). Solo lo da Shopify;
     # la app lo usa para clasificar mejor. El canal no lo mira.
     etiquetas: str = ""
+    # Precio de antes que la propia tienda ensena tachado (Shopify: compare_at_price;
+    # Amazon: el precio de referencia). Solo cuenta si es mayor que el actual:
+    # la app lo usa para el % de descuento. Lo que el radar calcula por su
+    # cuenta (bajadas) va aparte.
+    precio_anterior: float | None = None
 
     @property
     def clave(self) -> str:
@@ -248,6 +253,22 @@ def _precio_de_tarjeta(tarjeta) -> float | None:
     return valores[0]
 
 
+def _precio_tachado(tarjeta, actual: float | None) -> float | None:
+    """El precio de referencia tachado de una tarjeta de Amazon, si es creible.
+
+    Solo se acepta entre un 3 % y un 70 % por encima del actual: por debajo es
+    ruido de redondeo y por encima suele ser el precio por unidad o un PVP
+    inventado, y un descuento falso del 80 % es peor que no poner ninguno.
+    """
+    if not actual:
+        return None
+    for envoltorio in tarjeta.select("span.a-price.a-text-price span.a-offscreen"):
+        v = _precio(envoltorio.get_text(strip=True))
+        if v and actual * 1.03 <= v <= actual * 3.4:
+            return v
+    return None
+
+
 def _precio(texto: str) -> float | None:
     """'1.234,56 EUR' -> 1234.56. None si no hay nada parseable.
 
@@ -385,6 +406,7 @@ def amazon(palabras: list[str], paginas: int = 2,
                     precio=precio,
                     disponible=(precio is not None and not agotado),
                     imagen=img.get("src") if img else None,
+                    precio_anterior=_precio_tachado(c, precio),
                 )
             time.sleep(random.uniform(1.0, 2.5))
     if not out:
@@ -983,6 +1005,12 @@ def _shopify(dominio: str, clave: str, palabras: list[str],
             except (TypeError, ValueError):
                 precio = None
             imagen = (p.get("images") or [{}])[0].get("src")
+            try:
+                antes = float(v.get("compare_at_price")) if v.get("compare_at_price") else None
+            except (TypeError, ValueError):
+                antes = None
+            if not precio or not antes or antes < precio * 1.03:
+                antes = None
             etiquetas = " | ".join(x for x in [p.get("product_type"), p.get("vendor"),
                                                *(p.get("tags") or [])] if x)
             out.append(Producto(
@@ -994,6 +1022,7 @@ def _shopify(dominio: str, clave: str, palabras: list[str],
                 disponible=any(x.get("available") for x in variantes),
                 imagen=imagen,
                 etiquetas=etiquetas[:300],
+                precio_anterior=antes,
             ))
         time.sleep(random.uniform(0.3, 0.8))
     if not out:
