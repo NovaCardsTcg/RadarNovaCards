@@ -94,4 +94,25 @@ for tienda, titulo, esperado in CASOS:
         mal += 1
         print("MAL  %-9s pasa=%-5s esperado=%-5s %s" % (tienda, r, esperado, titulo[:70]))
 print("%d casos, %d mal" % (len(CASOS), mal))
+
+# Correccion de IVA de Amazon: el radar recibe el precio sin IVA y hay que
+# recuperar el PVP con IVA (ver tiendas._con_iva_amazon).
+IVA = [
+    (24.79, 29.99, "Pokemon ETB"), (26.02, 31.49, "Pokemon baraja"),
+    (9.08, 10.99, "Pokemon sobre"), (20.65, 24.99, "Pokemon lata"), (43.79, 52.99, "Pokemon caja"),
+    # Ya con IVA (acaban en terminacion de PVP): no se tocan.
+    (12.00, 12.00, "Pokemon"), (31.49, 31.49, "Pokemon"), (69.99, 69.99, "Pokemon"), (5.99, 5.99, "Pokemon"),
+    # Libro (IVA reducido): no se corrige.
+    (15.48, 15.48, "One Piece novela vol 2"),
+]
+for sin, esp, tit in IVA:
+    got = T._con_iva_amazon(sin, tit)
+    if got is None or abs(got - esp) > 0.02:
+        mal += 1
+        print("MAL  IVA %.2f -> %s esperado %.2f (%s)" % (sin, got, esp, tit))
+if T._con_iva_amazon(None, "x") is not None:
+    mal += 1
+    print("MAL  IVA None deberia seguir None")
+print("%d casos de IVA Amazon" % len(IVA))
+
 sys.exit(1 if mal else 0)

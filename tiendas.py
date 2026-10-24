@@ -403,58 +403,58 @@ def amazon(palabras: list[str], paginas: int = 2,
                 out[asin] = Producto(
                     tienda="amazon", pid=asin, titulo=titulo,
                     url=enlace_afiliado("https://www.amazon.es/dp/" + asin, afiliado),
-                    precio=precio,
+                    precio=_con_iva_amazon(precio, titulo),
                     disponible=(precio is not None and not agotado),
                     imagen=img.get("src") if img else None,
-                    precio_anterior=_precio_tachado(c, precio),
+                    precio_anterior=_con_iva_amazon(_precio_tachado(c, precio), titulo),
                 )
             time.sleep(random.uniform(1.0, 2.5))
     if not out:
         raise TiendaCaida("Amazon sin tarjetas para ninguna palabra (%s)" % pista)
-    _verifica_precios_amazon(s, out)
     return list(out.values())
 
 
-def _precio_de_ficha_amazon(texto: str) -> float | None:
-    """El precio que ve quien abre la ficha de Amazon, o None si no se lee."""
-    so = BeautifulSoup(texto, "lxml")
-    for sel in PRECIO_EN_FICHA["amazon"]:
-        for el in so.select(sel):
-            if el.find_parent(class_="a-text-price"):
-                continue          # tachado o precio por unidad
-            v = _precio(el.get_text(strip=True))
-            if v:
-                return v
-    return None
+# Terminaciones de un precio de venta al publico en Espana (centimos). Un precio
+# sin IVA (= PVP / 1,21) practicamente nunca cae en una de estas, asi que sirven
+# para distinguir el precio final del de empresa.
+_CENTIMOS_PVP = {99, 95, 90, 50, 49, 45, 0, 29, 25, 19, 75, 98, 89}
+# Libros y mangas llevan IVA reducido (4%), no el 21%: no se les aplica la correccion.
+_LIBRO = re.compile(r"\b(novela|manga|libro|c[oó]mic|comic|gu[ií]a oficial|artbook)\b", re.I)
 
 
-def _verifica_precios_amazon(s, out: dict, maximo: int = 120) -> None:
-    """Contrasta con la ficha el precio de cada tarjeta de Amazon.
+def _es_pvp(euros: float) -> bool:
+    return round(euros * 100) % 100 in _CENTIMOS_PVP
 
-    El precio de la tarjeta del buscador sale a menudo equivocado (sin IVA, de
-    otra variante o de otro vendedor) y en una web de ofertas un precio falso es
-    peor que ninguno. Vale el de la ficha; si la ficha no se puede leer (muro
-    anti-bot) el producto se queda sin precio y no se publica.
+
+def _con_iva_amazon(precio: float | None, titulo: str = "") -> float | None:
+    """Recupera el PVP con IVA cuando Amazon da el precio de empresa (sin IVA).
+
+    Desde los centros de datos (donde corre el radar) Amazon.es muestra a menudo
+    el precio SIN IVA, un 17,4% por debajo del que ve un comprador normal. Aqui no
+    se multiplica por 1,21 a ciegas: se busca el PVP psicologico (acaba en ,99 /
+    ,49 / ,95...) que, al quitarle el 21% de IVA, vuelve a dar exactamente este
+    numero. Si no existe tal PVP, el precio ya venia con IVA (o es atipico) y se
+    deja igual. Asi nunca se infla un precio que ya era correcto.
+
+    Comprobado sobre avisos reales: 24,79 -> 29,99 y 26,02 -> 31,49.
     """
-    for pid, p in list(out.items())[:maximo]:
-        if p.precio is None:
-            continue
-        real = None
-        try:
-            r = _get(s, "https://www.amazon.es/dp/" + pid)
-            if not _marcador(r.text):
-                real = _precio_de_ficha_amazon(r.text)
-        except TiendaCaida:
-            pass
-        if real is None:
-            p.precio, p.precio_anterior, p.disponible = None, None, False
-        elif abs(real - p.precio) > 0.01:
-            p.precio = real
-            p.precio_anterior = None   # el tachado de la tarjeta ya no cuadra
-        time.sleep(random.uniform(0.8, 1.8))
-    for pid in list(out)[maximo:]:
-        out[pid].precio = out[pid].precio_anterior = None
-        out[pid].disponible = False
+    if precio is None or precio <= 0 or _LIBRO.search(titulo or ""):
+        return precio
+    if _es_pvp(precio):
+        return precio                      # ya parece un PVP final
+    objetivo = round(precio * 121)         # centimos del PVP aproximado
+    # Cuando dos PVP distintos reconstruyen el mismo precio sin IVA (p. ej. 29,99
+    # y 30,00 para 24,79), gana el que mejor "huele" a precio de tienda: ,99
+    # antes que ,49, y el euro redondo el ultimo.
+    orden = {99: 0, 95: 1, 49: 2, 45: 3, 90: 4, 50: 5, 98: 6, 89: 7, 29: 8, 25: 9, 19: 10, 75: 11, 0: 12}
+    mejor, mejor_clave = None, None
+    for cent in range(objetivo - 6, objetivo + 7):
+        x = cent / 100
+        if cent % 100 in _CENTIMOS_PVP and round(x / 1.21, 2) == round(precio, 2):
+            clave = (orden.get(cent % 100, 99), abs(cent - objetivo))
+            if mejor_clave is None or clave < mejor_clave:
+                mejor, mejor_clave = x, clave
+    return mejor if mejor is not None else precio
 
 
 def eci(palabras: list[str], paginas: int = 2) -> list[Producto]:
