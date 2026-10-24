@@ -1,0 +1,39 @@
+name: noticias
+
+# Una o dos noticias al dia para cromeltcg.com (ver noticias_ia.py).
+# Se pide un arranque cada 3 horas porque GitHub se salta muchos arranques
+# programados; el propio script respeta el cupo (2 al dia, 5 h entre una y
+# otra), asi que arrancar de mas no cuesta nada: termina sin llamar a la API.
+on:
+  schedule:
+    - cron: '20 */3 * * *'
+  workflow_dispatch:
+    inputs:
+      seco:
+        description: 'Prueba: escribe la noticia en el registro pero no la guarda'
+        type: boolean
+        default: false
+
+concurrency:
+  group: noticias-ia
+  cancel-in-progress: false
+
+jobs:
+  noticias:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Redactar y publicar
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: |
+          if [ -z "$ANTHROPIC_API_KEY" ]; then echo "Falta el secreto ANTHROPIC_API_KEY: no se hace nada"; exit 0; fi
+          if [ "${{ inputs.seco }}" = "true" ]; then python noticias_ia.py --seco; else python noticias_ia.py; fi
