@@ -294,6 +294,34 @@ def avisa_reportes(estado: dict) -> str | None:
             % (len(nuevos), "s" if len(nuevos) > 1 else "", "s" if len(nuevos) > 1 else "", len(lista)))
 
 
+# ---------------------------------------------------------------- 4. noticias
+
+def recoge_noticias(config: dict, estado: dict) -> int:
+    """Titulares de TCG de los feeds de config.json -> seccion de noticias de la app.
+
+    Como mucho cada `noticias_cada_h` horas. Las noticias que ya existen (misma
+    fuente) no se tocan, y las que se ocultan a mano no vuelven.
+    """
+    feeds = config.get("noticias_feeds") or []
+    if not activo() or not feeds:
+        return 0
+    cada = float(config.get("noticias_cada_h", 6)) * 3600
+    if time.time() - estado.get("noticias_ultima", 0) < cada:
+        return 0
+    estado["noticias_ultima"] = time.time()  # aunque falle: no se insiste cada pasada
+    try:
+        import noticias
+        items = noticias.recoge(feeds)
+        if not items:
+            return 0
+        n = _rpc("radar_noticias", {"p_items": items}) or 0
+        print("[app] noticias: %d titulares leidos, %s nuevos" % (len(items), n))
+        return int(n)
+    except Exception as e:
+        print("[app] noticias: no se pudieron recoger (%s)" % str(e)[:160])
+        return 0
+
+
 def envia_pendientes() -> int:
     if not activo():
         return 0

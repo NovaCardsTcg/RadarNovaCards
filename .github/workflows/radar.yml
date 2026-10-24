@@ -61,7 +61,8 @@ jobs:
                     "horas_candidato", "rodaje_pasadas", "max_nuevos_pasada",
                     "prefijo_por_tienda", "amazon_busquedas", "amazon_busquedas_pasada",
                     "agrupar_desde", "sin_exigir_palabra",
-                    "amazon_afiliado", "amazon_precio_publico"):
+                    "amazon_afiliado", "amazon_precio_publico", "noticias_feeds",
+                    "noticias_cada_h"):
               if k in m:
                   e[k] = m[k]
           # Tiendas nuevas de main entran activadas; las que el usuario apago

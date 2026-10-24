@@ -120,6 +120,46 @@
   "horas_silencio": 12,
   "max_avisos": 15,
   "max_nuevos_pasada": 8,
+  "noticias_cada_h": 6,
+  "noticias_feeds": [
+    {
+      "filtrar": true,
+      "maximo": 8,
+      "nombre": "ICv2",
+      "url": "https://icv2.com/rss"
+    },
+    {
+      "filtrar": true,
+      "juego": "one_piece",
+      "maximo": 4,
+      "nombre": "OnePiece.gg",
+      "url": "https://onepiece.gg/feed/"
+    },
+    {
+      "juego": "magic",
+      "maximo": 3,
+      "nombre": "MTG Rocks",
+      "url": "https://mtgrocks.com/feed/"
+    },
+    {
+      "filtrar": true,
+      "maximo": 3,
+      "nombre": "Dexerto",
+      "url": "https://www.dexerto.com/feed/"
+    },
+    {
+      "filtrar": true,
+      "maximo": 2,
+      "nombre": "PC Gamer",
+      "url": "https://www.pcgamer.com/rss/"
+    },
+    {
+      "filtrar": true,
+      "maximo": 2,
+      "nombre": "Eurogamer",
+      "url": "https://www.eurogamer.net/feed"
+    }
+  ],
   "palabras": [
     "pokemon",
     "pokemon jcc",
