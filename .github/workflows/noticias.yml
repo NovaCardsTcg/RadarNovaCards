@@ -31,9 +31,10 @@ jobs:
       - run: pip install -r requirements.txt
       - name: Redactar y publicar
         env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
         run: |
-          if [ -z "$ANTHROPIC_API_KEY" ]; then echo "Falta el secreto ANTHROPIC_API_KEY: no se hace nada"; exit 0; fi
+          if [ -z "$GEMINI_API_KEY" ] && [ -z "$ANTHROPIC_API_KEY" ]; then echo "Falta el secreto GEMINI_API_KEY (o ANTHROPIC_API_KEY): no se hace nada"; exit 0; fi
           if [ "${{ inputs.seco }}" = "true" ]; then python noticias_ia.py --seco; else python noticias_ia.py; fi

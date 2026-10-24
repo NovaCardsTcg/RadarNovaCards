@@ -36,7 +36,6 @@ from bs4 import BeautifulSoup
 import noticias
 
 UA = "Mozilla/5.0 (compatible; CromelBot/1.0; +https://cromeltcg.com)"
-MODELO = os.environ.get("CROMEL_IA_MODELO", "claude-sonnet-5-5")
 POR_DIA = int(os.environ.get("CROMEL_IA_POR_DIA", "2"))
 HORAS_ENTRE = float(os.environ.get("CROMEL_IA_HORAS_ENTRE", "5"))
 MAX_INTENTOS = 6                 # llamadas a la API por ejecucion, como mucho
@@ -223,39 +222,78 @@ Responde SOLO con un JSON, sin texto alrededor:
 {"publicar": true|false, "motivo": "una frase", "titulo": "...", "resumen": "...", "cuerpo": "...", "juego": "..."}"""
 
 
-def pide_a_claude(c: dict, art: dict) -> dict | None:
-    if os.environ.get("CROMEL_IA_FALSO"):           # para probar el flujo sin gastar
-        return json.loads(os.environ["CROMEL_IA_FALSO"])
+def hay_ia() -> bool:
+    return bool(os.environ.get("GEMINI_API_KEY") or os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("CROMEL_IA_FALSO"))
+
+
+def _reintenta(codigo: int) -> bool:
+    return codigo in (429, 500, 502, 503, 529)
+
+
+def _gemini(system: str, user: str) -> str | None:
+    """Texto de Google Gemini (capa gratuita de Google AI Studio)."""
+    modelo = os.environ.get("CROMEL_IA_MODELO", "gemini-2.0-flash")
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{modelo}:generateContent"
     cuerpo = {
-        "model": MODELO, "max_tokens": 2200, "system": SISTEMA,
-        "messages": [{"role": "user", "content":
-                      f"Fuente: {c['fuente']}\nTítulo original: {art['titulo']}\nFecha: {art.get('fecha') or 'sin fecha'}\n\nTexto del artículo:\n{art['texto']}"}],
+        "system_instruction": {"parts": [{"text": system}]},
+        "contents": [{"parts": [{"text": user}]}],
+        "generationConfig": {"maxOutputTokens": 2200, "temperature": 0.7, "responseMimeType": "application/json"},
     }
+    for intento in range(3):
+        try:
+            r = requests.post(url, timeout=120, json=cuerpo,
+                              headers={"x-goog-api-key": os.environ["GEMINI_API_KEY"], "content-type": "application/json"})
+        except requests.RequestException as e:
+            log("red:", str(e)[:80]); time.sleep(5); continue
+        if _reintenta(r.status_code):
+            time.sleep(10 * (intento + 1)); continue
+        if r.status_code != 200:
+            log("Gemini", r.status_code, r.text[:200]); return None
+        try:
+            cands = r.json().get("candidates", [])
+            return "".join(p.get("text", "") for p in cands[0]["content"]["parts"]) if cands else None
+        except (KeyError, IndexError, ValueError):
+            log("Gemini: respuesta rara"); return None
+    return None
+
+
+def _claude(system: str, user: str) -> str | None:
+    """Texto de Claude (API de Anthropic), por si se tiene clave propia."""
+    modelo = os.environ.get("CROMEL_IA_MODELO", "claude-sonnet-5-5")
+    cuerpo = {"model": modelo, "max_tokens": 2200, "system": system,
+              "messages": [{"role": "user", "content": user}]}
     for intento in range(3):
         try:
             r = requests.post("https://api.anthropic.com/v1/messages", timeout=120, json=cuerpo, headers={
                 "x-api-key": os.environ["ANTHROPIC_API_KEY"], "anthropic-version": "2023-06-01", "content-type": "application/json"})
         except requests.RequestException as e:
-            log("red:", str(e)[:80])
-            time.sleep(5)
-            continue
-        if r.status_code in (429, 500, 502, 503, 529):
-            time.sleep(10 * (intento + 1))
-            continue
+            log("red:", str(e)[:80]); time.sleep(5); continue
+        if _reintenta(r.status_code):
+            time.sleep(10 * (intento + 1)); continue
         if r.status_code != 200:
-            log("API", r.status_code, r.text[:200])
-            return None
-        txt = "".join(b.get("text", "") for b in r.json().get("content", []) if b.get("type") == "text")
-        m = re.search(r"\{.*\}", txt, re.S)
-        if not m:
-            log("respuesta sin JSON")
-            return None
-        try:
-            return json.loads(m.group(0))
-        except json.JSONDecodeError:
-            log("JSON invalido")
-            return None
+            log("Claude", r.status_code, r.text[:200]); return None
+        return "".join(b.get("text", "") for b in r.json().get("content", []) if b.get("type") == "text")
     return None
+
+
+def pide_a_ia(c: dict, art: dict) -> dict | None:
+    """Pide la noticia reescrita a la IA disponible (Gemini gratis o Claude)."""
+    if os.environ.get("CROMEL_IA_FALSO"):           # para probar el flujo sin gastar
+        return json.loads(os.environ["CROMEL_IA_FALSO"])
+    user = (f"Fuente: {c['fuente']}\nTítulo original: {art['titulo']}\n"
+            f"Fecha: {art.get('fecha') or 'sin fecha'}\n\nTexto del artículo:\n{art['texto']}")
+    txt = _gemini(SISTEMA, user) if os.environ.get("GEMINI_API_KEY") else _claude(SISTEMA, user)
+    if not txt:
+        return None
+    m = re.search(r"\{.*\}", txt, re.S)
+    if not m:
+        log("respuesta sin JSON")
+        return None
+    try:
+        return json.loads(m.group(0))
+    except json.JSONDecodeError:
+        log("JSON invalido")
+        return None
 
 
 # ------------------------------------------------------------------ validacion
@@ -352,7 +390,7 @@ def main(seco: bool = False) -> int:
             continue
         llamadas += 1
         log("probando:", art["titulo"][:90])
-        r = pide_a_claude(c, art)
+        r = pide_a_ia(c, art)
         if not r or not r.get("publicar"):
             log("  descartada:", (r or {}).get("motivo", "sin respuesta"))
             continue
