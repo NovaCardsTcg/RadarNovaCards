@@ -25,7 +25,7 @@ import time
 import unicodedata
 from dataclasses import dataclass
 from html import unescape
-from urllib.parse import quote_plus, urlparse
+from urllib.parse import quote_plus, unquote, urlparse
 
 import requests
 from bs4 import BeautifulSoup
@@ -660,8 +660,16 @@ def _game_buscador(s) -> list[Producto]:
             titulo = re.sub(r"\s*Merchandising\s*$", "", titulo).strip() or pid
             m = re.search(r"(\d+)\s*,\s*(\d{2})\s*€", texto)
             precio = float("%s.%s" % m.groups()) if m else None
+            # La foto va en la tarjeta como /_next/image?url=<media.game.es/...>:
+            # se deshace el envoltorio para guardar la direccion directa.
+            imagen = None
+            im = art.select_one("img[src]")
+            if im:
+                src = unquote(im["src"])
+                mi = re.search(r"url=(https://media\.game\.es/[^&\s]+)", src)
+                imagen = mi.group(1) if mi else None
             out[pid] = Producto(tienda="game", pid=pid, titulo=titulo, url=url,
-                                precio=precio)
+                                precio=precio, imagen=imagen)
         time.sleep(random.uniform(0.8, 1.6))
     if not out:
         raise TiendaCaida("GAME: ni sitemap ni buscador devuelven productos")
