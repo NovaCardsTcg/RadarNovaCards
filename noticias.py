@@ -143,6 +143,34 @@ def lee_feed(feed: dict, dias: int = 10) -> list[dict]:
     return out[: int(feed.get("maximo", 6))]
 
 
+def imagen_de_pagina(url: str) -> str | None:
+    """La imagen de cabecera (og:image / twitter:image) de la propia noticia.
+
+    Muchos feeds no traen foto; la pagina del articulo casi siempre si, porque
+    es la que usan las redes al compartirlo. Es la imagen que la propia fuente
+    eligio para ese articulo, asi que se relaciona con lo que cuenta.
+    """
+    try:
+        r = requests.get(url, headers={"User-Agent": UA}, timeout=15)
+        if r.status_code != 200:
+            return None
+        cab = r.text[:200_000]
+    except requests.RequestException:
+        return None
+    for patron in (
+        r"""<meta[^>]+(?:property|name)=["'](?:og:image(?::secure_url)?|twitter:image)["'][^>]+content=["']([^"']+)""",
+        r"""<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["'](?:og:image|twitter:image)["']""",
+    ):
+        m = re.search(patron, cab, re.I)
+        if m:
+            u = html.unescape(m.group(1)).strip()
+            if u.startswith("//"):
+                u = "https:" + u
+            if u.startswith("https://") and not re.search(r"logo|favicon|default|placeholder", u, re.I):
+                return u
+    return None
+
+
 def recoge(feeds: list[dict]) -> list[dict]:
     todo, vistos = [], set()
     for f in feeds:
@@ -151,6 +179,9 @@ def recoge(feeds: list[dict]) -> list[dict]:
         for x in n:
             if x["fuente_url"] not in vistos:
                 vistos.add(x["fuente_url"])
+                if not x.get("imagen_url"):
+                    x["imagen_url"] = imagen_de_pagina(x["fuente_url"])
+                    time.sleep(0.5)
                 todo.append(x)
         time.sleep(1.0)
     return todo

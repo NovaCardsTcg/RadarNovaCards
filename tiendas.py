@@ -411,7 +411,50 @@ def amazon(palabras: list[str], paginas: int = 2,
             time.sleep(random.uniform(1.0, 2.5))
     if not out:
         raise TiendaCaida("Amazon sin tarjetas para ninguna palabra (%s)" % pista)
+    _verifica_precios_amazon(s, out)
     return list(out.values())
+
+
+def _precio_de_ficha_amazon(texto: str) -> float | None:
+    """El precio que ve quien abre la ficha de Amazon, o None si no se lee."""
+    so = BeautifulSoup(texto, "lxml")
+    for sel in PRECIO_EN_FICHA["amazon"]:
+        for el in so.select(sel):
+            if el.find_parent(class_="a-text-price"):
+                continue          # tachado o precio por unidad
+            v = _precio(el.get_text(strip=True))
+            if v:
+                return v
+    return None
+
+
+def _verifica_precios_amazon(s, out: dict, maximo: int = 120) -> None:
+    """Contrasta con la ficha el precio de cada tarjeta de Amazon.
+
+    El precio de la tarjeta del buscador sale a menudo equivocado (sin IVA, de
+    otra variante o de otro vendedor) y en una web de ofertas un precio falso es
+    peor que ninguno. Vale el de la ficha; si la ficha no se puede leer (muro
+    anti-bot) el producto se queda sin precio y no se publica.
+    """
+    for pid, p in list(out.items())[:maximo]:
+        if p.precio is None:
+            continue
+        real = None
+        try:
+            r = _get(s, "https://www.amazon.es/dp/" + pid)
+            if not _marcador(r.text):
+                real = _precio_de_ficha_amazon(r.text)
+        except TiendaCaida:
+            pass
+        if real is None:
+            p.precio, p.precio_anterior, p.disponible = None, None, False
+        elif abs(real - p.precio) > 0.01:
+            p.precio = real
+            p.precio_anterior = None   # el tachado de la tarjeta ya no cuadra
+        time.sleep(random.uniform(0.8, 1.8))
+    for pid in list(out)[maximo:]:
+        out[pid].precio = out[pid].precio_anterior = None
+        out[pid].disponible = False
 
 
 def eci(palabras: list[str], paginas: int = 2) -> list[Producto]:
