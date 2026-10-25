@@ -633,7 +633,7 @@ CATALOGO_PARCIAL: set[str] = set()
 # Busquedas de GAME para descubrir producto. Van dirigidas a TCG porque su
 # buscador devuelve como mucho una pagina corta por consulta.
 BUSQUEDAS_GAME = ["sobres pokemon", "cartas pokemon", "pokemon tcg", "caja entrenador elite",
-                  "lata pokemon", "one piece card game", "sobres one piece"]
+                  "lata pokemon", "one piece card game", "sobres one piece", "funko"]
 
 
 def _game_buscador(s) -> list[Producto]:
@@ -1136,53 +1136,66 @@ def detalle(p: Producto) -> Producto:
 TIENDAS_SHOPIFY = {
     "cardzone": ("CardZone", "cardzone.es"),
     "laescotilla": ("La Escotilla", "laescotillajuegos.com"),
-    "toyplanet": ("Toy Planet", "www.toyplanet.com", "cartas-y-sobres-coleccionables"),
+    # Toy Planet (tienda insignia de Funko): la coleccion de cartas y las de
+    # Funko. Las que no existan con ese nombre se saltan solas.
+    "toyplanet": ("Toy Planet", "www.toyplanet.com", "cartas-y-sobres-coleccionables", "funko", "funko-pop", "funkos"),
     # Catalogo pequeno (~130 productos, una pagina): se lee entero.
     "frikimonkey": ("Frikimonkey", "frikimonkey.com"),
 }
 
 
 def _shopify(dominio: str, clave: str, palabras: list[str],
-             paginas: int = 15, coleccion: str | None = None) -> list[Producto]:
+             paginas: int = 15, colecciones: list[str] | None = None) -> list[Producto]:
     s = _sesion("https://%s/" % dominio)
-    base = "https://%s%s/products.json" % (dominio, "/collections/" + coleccion if coleccion else "")
+    # Sin colecciones: el catalogo entero. Con varias (Toy Planet: cartas +
+    # funko): se leen todas y las que no existan (404) se saltan sin tumbar la tienda.
+    bases = (["https://%s/collections/%s/products.json" % (dominio, c) for c in colecciones]
+             if colecciones else ["https://%s/products.json" % dominio])
     out: list[Producto] = []
-    for pag in range(1, paginas + 1):
-        r = _get(s, "%s?limit=250&page=%d" % (base, pag))
-        try:
-            lote = r.json().get("products") or []
-        except ValueError:
-            raise TiendaCaida("%s no devuelve JSON en products.json" % dominio)
-        if not lote:
-            break
-        for p in lote:
-            variantes = p.get("variants") or [{}]
-            v = variantes[0]
+    vistos: set[str] = set()
+    for base in bases:
+        for pag in range(1, paginas + 1):
             try:
-                precio = float(v.get("price")) if v.get("price") else None
-            except (TypeError, ValueError):
-                precio = None
-            imagen = (p.get("images") or [{}])[0].get("src")
+                r = _get(s, "%s?limit=250&page=%d" % (base, pag))
+            except TiendaCaida:
+                break   # coleccion inexistente o caida: se salta
             try:
-                antes = float(v.get("compare_at_price")) if v.get("compare_at_price") else None
-            except (TypeError, ValueError):
-                antes = None
-            if not precio or not antes or antes < precio * 1.03:
-                antes = None
-            etiquetas = " | ".join(x for x in [p.get("product_type"), p.get("vendor"),
-                                               *(p.get("tags") or [])] if x)
-            out.append(Producto(
-                tienda=clave, pid=str(p.get("id")),
-                titulo=p.get("title") or "",
-                url="https://%s/products/%s" % (dominio, p.get("handle") or ""),
-                precio=precio,
-                # Agotado en Shopify es available=False en todas las variantes.
-                disponible=any(x.get("available") for x in variantes),
-                imagen=imagen,
-                etiquetas=etiquetas[:300],
-                precio_anterior=antes,
-            ))
-        time.sleep(random.uniform(0.3, 0.8))
+                lote = r.json().get("products") or []
+            except ValueError:
+                break   # no es JSON (p. ej. pagina 404 de una coleccion)
+            if not lote:
+                break
+            for p in lote:
+                if str(p.get("id")) in vistos:
+                    continue
+                vistos.add(str(p.get("id")))
+                variantes = p.get("variants") or [{}]
+                v = variantes[0]
+                try:
+                    precio = float(v.get("price")) if v.get("price") else None
+                except (TypeError, ValueError):
+                    precio = None
+                imagen = (p.get("images") or [{}])[0].get("src")
+                try:
+                    antes = float(v.get("compare_at_price")) if v.get("compare_at_price") else None
+                except (TypeError, ValueError):
+                    antes = None
+                if not precio or not antes or antes < precio * 1.03:
+                    antes = None
+                etiquetas = " | ".join(x for x in [p.get("product_type"), p.get("vendor"),
+                                                   *(p.get("tags") or [])] if x)
+                out.append(Producto(
+                    tienda=clave, pid=str(p.get("id")),
+                    titulo=p.get("title") or "",
+                    url="https://%s/products/%s" % (dominio, p.get("handle") or ""),
+                    precio=precio,
+                    # Agotado en Shopify es available=False en todas las variantes.
+                    disponible=any(x.get("available") for x in variantes),
+                    imagen=imagen,
+                    etiquetas=etiquetas[:300],
+                    precio_anterior=antes,
+                ))
+            time.sleep(random.uniform(0.3, 0.8))
     if not out:
         raise TiendaCaida("%s no ha devuelto ningun producto" % dominio)
     return out
@@ -1194,7 +1207,7 @@ def _shopify(dominio: str, clave: str, palabras: list[str],
 TIENDAS_WOO = {
     "flashstore": ("Flash Store", "flashstore.es"),
 }
-BUSQUEDAS_WOO = ["pokemon", "one piece"]
+BUSQUEDAS_WOO = ["pokemon", "one piece", "funko"]
 
 
 def _woocommerce(dominio: str, clave: str) -> list[Producto]:
@@ -1212,16 +1225,24 @@ def _woocommerce(dominio: str, clave: str) -> list[Producto]:
                 break
             for p in lote:
                 pr = p.get("prices") or {}
-                try:
-                    precio = int(pr["price"]) / 10 ** int(pr.get("currency_minor_unit", 2))
-                except (KeyError, TypeError, ValueError):
-                    precio = None
+                unidad = 10 ** int(pr.get("currency_minor_unit", 2))
+                def _p(clave_precio):
+                    try:
+                        return int(pr[clave_precio]) / unidad
+                    except (KeyError, TypeError, ValueError):
+                        return None
+                precio = _p("price")
+                # El precio de antes (regular) solo cuenta si hay rebaja real.
+                antes = _p("regular_price")
+                if not precio or not antes or antes < precio * 1.03:
+                    antes = None
                 out[str(p.get("id"))] = Producto(
                     tienda=clave, pid=str(p.get("id")),
                     titulo=BeautifulSoup(p.get("name") or "", "lxml").get_text(),
                     url=p.get("permalink") or "", precio=precio,
                     disponible=bool(p.get("is_in_stock")),
-                    imagen=((p.get("images") or [{}])[0]).get("src"))
+                    imagen=((p.get("images") or [{}])[0]).get("src"),
+                    precio_anterior=antes)
             if len(lote) < 100:
                 break
             time.sleep(random.uniform(0.3, 0.8))
@@ -1270,9 +1291,9 @@ def toysrus(palabras: list[str]) -> list[Producto]:
     return list(out.values())
 
 
-def _adaptador_shopify(clave: str, dominio: str, coleccion: str | None = None):
+def _adaptador_shopify(clave: str, dominio: str, *colecciones: str):
     def adaptador(palabras: list[str], **kw) -> list[Producto]:
-        return _shopify(dominio, clave, palabras, coleccion=coleccion)
+        return _shopify(dominio, clave, palabras, colecciones=list(colecciones) or None)
     adaptador.__name__ = "shopify_" + clave
     return adaptador
 

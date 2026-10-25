@@ -56,6 +56,35 @@ JUEGOS = [  # (terminos en el titulo normalizado, juego)
     (("dragon ball",), "dragon_ball"),
     (("pokemon",), "pokemon"),
 ]
+# Un producto es Funko si lo dice el titulo. Vale para cualquier tienda.
+ES_FUNKO = re.compile(r"\bfunko\b", re.I)
+
+# Franquicia de un Funko a partir del titulo (orden: lo mas concreto primero).
+# Cada entrada es (franquicia, patron). La primera que encaja gana.
+FRANQUICIAS_FUNKO = [
+    ("One Piece", r"one piece"),
+    ("Dragon Ball", r"dragon ?ball"),
+    ("Naruto", r"naruto|boruto"),
+    ("Jujutsu Kaisen", r"jujutsu"),
+    ("Solo Leveling", r"solo leveling"),
+    ("Pokémon", r"pokemon|pikachu|charizard|eevee"),
+    ("Marvel", r"marvel|spider[- ]?man|avengers|x-?men|deadpool|wolverine|venom|hulk|iron ?man|\bthor\b|loki|capitan america|captain america|black panther"),
+    ("Star Wars", r"star wars|mandalorian|grogu|baby yoda|darth|jedi|sith"),
+    ("Harry Potter", r"harry potter|hogwarts|dumbledore|voldemort"),
+    ("DC", r"\bdc\b|batman|superman|\bjoker\b|harley quinn|wonder woman|aquaman|flash"),
+    ("Disney", r"disney|mickey|minnie|stitch|pixar|toy story|frozen|\bpooh\b"),
+    ("Anime", r"anime|demon slayer|kimetsu|chainsaw|hunter x hunter|bleach|evangelion|sailor moon|my hero|dragon quest"),
+]
+_FRANQ_RE = [(nombre, re.compile(pat, re.I)) for nombre, pat in FRANQUICIAS_FUNKO]
+
+
+def franquicia_de(titulo: str) -> str | None:
+    for nombre, rx in _FRANQ_RE:
+        if rx.search(titulo):
+            return nombre
+    return None
+
+
 GRADEO = re.compile(r"\b(PSA|PCA|CGC|BGS|Beckett|SGC|TAG|ACE)\s*[-:]?\s*(\d{1,2}(?:[.,]5)?)\b", re.I)
 ACCESORIOS = [  # el orden importa: "PET Protector ... (10 Pack)" es protector, no funda
     (("protector", "acrylic", "acrilico", "display case", "vitrina", "magnetic", "one touch", "case for"), "Protectores"),
@@ -108,9 +137,9 @@ def config_app(config: dict) -> dict:
 
 def categoria_de(p, config_app_: dict, relevante) -> tuple[str, str | None, str | None] | None:
     """(categoria, subtipo, gradeo), o None si no es de cartas coleccionables."""
-    # Funko (y otros no-cartas): la tienda ya dijo lo que es; no pasa por el
-    # filtro de TCG. La franquicia va en su propio campo (ver para_app).
-    if getattr(p, "categoria_forzada", None) == "funko":
+    # Funko: o lo marca la tienda (Passarella) o lo dice el titulo ("Funko POP...").
+    # No pasa por el filtro de TCG. La franquicia va en su propio campo (ver para_app).
+    if getattr(p, "categoria_forzada", None) == "funko" or ES_FUNKO.search(p.titulo):
         return "funko", None, None
     t = normaliza(p.titulo)
     etiquetas = normaliza(getattr(p, "etiquetas", "") or "")
@@ -158,8 +187,9 @@ def para_app(productos: list, config: dict, relevante, destacado) -> list[dict]:
         out.append({
             "pid": p.pid, "titulo": p.titulo, "url": p.url, "imagen": p.imagen,
             "categoria": categoria, "subtipo": subtipo, "gradeo": gradeo, "juego": juego,
-            # La franquicia (Marvel, One Piece...) solo la llevan los Funko.
-            "franquicia": getattr(p, "franquicia", None) if funko else None,
+            # La franquicia (Marvel, One Piece...) solo la llevan los Funko: la da
+            # la tienda (Passarella) o se deduce del titulo.
+            "franquicia": (getattr(p, "franquicia", None) or franquicia_de(p.titulo)) if funko else None,
             "coleccion": c["coleccion"] if sellado and juego in ("pokemon", "one_piece") else None,
             "tipo": c["tipo"] if sellado else None, "idioma": c["idioma"],
             "destacado": bool(destacado(p, config)),
