@@ -108,6 +108,10 @@ def config_app(config: dict) -> dict:
 
 def categoria_de(p, config_app_: dict, relevante) -> tuple[str, str | None, str | None] | None:
     """(categoria, subtipo, gradeo), o None si no es de cartas coleccionables."""
+    # Funko (y otros no-cartas): la tienda ya dijo lo que es; no pasa por el
+    # filtro de TCG. La franquicia va en su propio campo (ver para_app).
+    if getattr(p, "categoria_forzada", None) == "funko":
+        return "funko", None, None
     t = normaliza(p.titulo)
     etiquetas = normaliza(getattr(p, "etiquetas", "") or "")
     juego = juego_de(p.titulo, etiquetas)
@@ -139,12 +143,15 @@ def para_app(productos: list, config: dict, relevante, destacado) -> list[dict]:
         if not cat:
             continue
         categoria, subtipo, gradeo = cat
+        funko = categoria == "funko"
         c = formato.clasifica(p.titulo)
         juego = juego_de(p.titulo, getattr(p, "etiquetas", "") or "") or "otro"
         sellado = categoria == "sellado"
         out.append({
             "pid": p.pid, "titulo": p.titulo, "url": p.url, "imagen": p.imagen,
             "categoria": categoria, "subtipo": subtipo, "gradeo": gradeo, "juego": juego,
+            # La franquicia (Marvel, One Piece...) solo la llevan los Funko.
+            "franquicia": getattr(p, "franquicia", None) if funko else None,
             "coleccion": c["coleccion"] if sellado and juego in ("pokemon", "one_piece") else None,
             "tipo": c["tipo"] if sellado else None, "idioma": c["idioma"],
             "destacado": bool(destacado(p, config)),

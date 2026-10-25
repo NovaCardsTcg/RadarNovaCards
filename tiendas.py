@@ -99,6 +99,11 @@ class Producto:
     # la app lo usa para el % de descuento. Lo que el radar calcula por su
     # cuenta (bajadas) va aparte.
     precio_anterior: float | None = None
+    # Para productos que NO son cartas (Funko): la tienda ya sabe la categoria y
+    # la franquicia, asi que se saltan la clasificacion de TCG. categoria_forzada
+    # = 'funko' y franquicia = "Marvel", "One Piece"... (lo rellena passarella()).
+    categoria_forzada: str | None = None
+    franquicia: str | None = None
 
     @property
     def clave(self) -> str:
@@ -743,6 +748,108 @@ def pokemoncenter(palabras: list[str]) -> list[Producto]:
     return out
 
 
+# --------------------------------------------------------------------------
+# Passarella (passarellaweb.es): tienda friki de Valencia. Plataforma a medida,
+# pero cada categoria lista los productos con precio, descuento, stock e imagen
+# en el HTML (li.item), asi que no hace falta abrir ficha a ficha. Trae cartas
+# TCG (Pokemon, Magic, Lorcana) y MUCHO Funko Pop por franquicia.
+# --------------------------------------------------------------------------
+
+# (codMateria, ruta, categoria_forzada, franquicia). Las subcategorias de
+# franquicia van antes que la general para que, al quitar duplicados por pid,
+# gane la franquicia mas concreta (un Funko de One Piece queda como "One Piece",
+# no como "Anime").
+PASSARELLA_CATEGORIAS = [
+    ("16", "tcg-trading-cards-games-16", None, None),
+    ("27", "pokemon-27", None, None),
+    ("040401", "funko-pop-one-piece-040401", "funko", "One Piece"),
+    ("040402", "funko-pop-dragon-ball-040402", "funko", "Dragon Ball"),
+    ("040404", "funko-pop-jujutsu-kaisen-040404", "funko", "Jujutsu Kaisen"),
+    ("040405", "funko-pop-pokemon-040405", "funko", "Pokémon"),
+    ("040407", "funko-pop-naruto-boruto-040407", "funko", "Naruto"),
+    ("040408", "funko-pop-solo-leveling-040408", "funko", "Solo Leveling"),
+    ("0401", "funko-pop-harry-potter-0401", "funko", "Harry Potter"),
+    ("0402", "funko-pop-marvel-0402", "funko", "Marvel"),
+    ("0403", "funko-pop-disney-0403", "funko", "Disney"),
+    ("0414", "funko-pop-star-wars-0414", "funko", "Star Wars"),
+    ("0404", "funko-pop-manga-anime-0404", "funko", "Anime"),
+]
+PASSARELLA_MAX_PAGS = 25            # tope por categoria (30 productos/pagina)
+
+
+def _passarella_tarjeta(li, categoria_forzada, franquicia) -> Producto | None:
+    a = li.select_one("a.productClick") or li.select_one("a[href*='/producto/']")
+    if not a:
+        return None
+    pid = a.get("data-id") or ""
+    href = a.get("href") or ""
+    if not pid or not href:
+        return None
+    dd = li.select_one("dd.title")
+    titulo = (a.get("data-name") or (dd.get_text(strip=True) if dd else "")).strip()
+    if not titulo:
+        return None
+    img = li.select_one("img.foto")
+    disp = li.select_one("dd.disponibilidad")
+    texto_disp = disp.get_text(" ", strip=True).lower() if disp else ""
+    # "Disponible", "Disponible última unidad" = hay; "Agotado"/"No disponible" = no.
+    disponible = texto_disp.startswith("disponible") or (disp is not None and "green" in (disp.get("class") or []))
+    precio = _precio(li.select_one("p.precio strong").get_text(strip=True)) if li.select_one("p.precio strong") else None
+    antes = _precio(li.select_one("p.precio strike").get_text(strip=True)) if li.select_one("p.precio strike") else None
+    src = img.get("src") or img.get("data-src") if img else None
+    return Producto(
+        tienda="passarella", pid=pid, titulo=titulo,
+        url="https://www.passarellaweb.es" + href if href.startswith("/") else href,
+        precio=precio, disponible=(disponible and precio is not None),
+        imagen=src if src and src.startswith("https://") else None,
+        precio_anterior=antes if antes and precio and antes > precio else None,
+        categoria_forzada=categoria_forzada, franquicia=franquicia,
+    )
+
+
+def passarella(palabras: list[str]) -> list[Producto]:
+    """Catalogo de Passarella: cartas TCG y Funko Pop, por categorias.
+
+    `palabras` no se usa para las de Funko (toda la categoria vale); para las de
+    TCG tampoco hace falta, porque son categorias ya de cartas y el filtro de la
+    app decide despues. Lee el listado (li.item), que trae precio, stock y foto,
+    asi que no abre ficha por ficha.
+    """
+    s = _sesion("https://www.passarellaweb.es/")
+    CATALOGO_PARCIAL.discard("passarella")
+    out: dict[str, Producto] = {}
+    for cod, ruta, cat, franq in PASSARELLA_CATEGORIAS:
+        vacias = 0
+        for pag in range(1, PASSARELLA_MAX_PAGS + 1):
+            url = ("https://www.passarellaweb.es/productos-de/%s/"
+                   "?pagSel=%d&cuantos=30&codMateria=%s&tipoArticulo=P" % (ruta, pag, cod))
+            try:
+                r = _get(s, url)
+            except TiendaCaida:
+                break
+            items = BeautifulSoup(r.text, "lxml").select("li.item")
+            if not items:
+                break
+            nuevos = 0
+            for li in items:
+                p = _passarella_tarjeta(li, cat, franq)
+                if p and p.pid not in out:
+                    out[p.pid] = p
+                    nuevos += 1
+            if len(items) < 30:          # ultima pagina de la categoria
+                break
+            if nuevos == 0:
+                vacias += 1
+                if vacias >= 2:          # dos paginas seguidas sin nada nuevo: basta
+                    break
+            else:
+                vacias = 0
+            time.sleep(random.uniform(0.6, 1.3))
+    if not out:
+        raise TiendaCaida("Passarella sin productos en ninguna categoria")
+    return list(out.values())
+
+
 def carrefour(palabras: list[str], trozos: int = 40) -> list[Producto]:
     """Carrefour bloquea buscador y API con Cloudflare, pero sirve los sitemaps.
 
@@ -1180,6 +1287,7 @@ ADAPTADORES = {
     "carrefour": (carrefour, False),
     "juguetilandia": (juguetilandia, False),
     "toysrus": (toysrus, True),
+    "passarella": (passarella, True),
 }
 
 # Las de Shopify se registran solas: anadir una tienda es tocar solo
@@ -1198,6 +1306,7 @@ NOMBRES = {
     "carrefour": "Carrefour",
     "juguetilandia": "Juguetilandia",
     "toysrus": "ToysRUs",
+    "passarella": "Passarella",
 }
 NOMBRES.update({k: v[0] for k, v in TIENDAS_SHOPIFY.items()})
 NOMBRES.update({k: v[0] for k, v in TIENDAS_WOO.items()})
