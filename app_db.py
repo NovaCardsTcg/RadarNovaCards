@@ -144,6 +144,14 @@ def para_app(productos: list, config: dict, relevante, destacado) -> list[dict]:
             continue
         categoria, subtipo, gradeo = cat
         funko = categoria == "funko"
+        # Funko: solo entra lo que tenga descuento (por defecto >= 15 %), para que
+        # la seccion no se llene de figuras a precio normal (Amazon, ECI, Juguetilandia
+        # tienen miles). El descuento sale del precio tachado de la propia tienda.
+        if funko:
+            minimo = config.get("funko_descuento_min", 15) / 100
+            ant = getattr(p, "precio_anterior", None)
+            if not (p.precio and ant and ant > 0 and (1 - p.precio / ant) >= minimo):
+                continue
         c = formato.clasifica(p.titulo)
         juego = juego_de(p.titulo, getattr(p, "etiquetas", "") or "") or "otro"
         sellado = categoria == "sellado"
