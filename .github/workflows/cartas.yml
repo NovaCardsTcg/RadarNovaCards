@@ -1,0 +1,42 @@
+name: cartas
+
+# Colecciones, cartas y precios de Pokemon TCG (TCGdex) -> Supabase, para la
+# seccion de colecciones de cromeltcg.com. Ver cartas_tcgdex.py.
+on:
+  schedule:
+    - cron: '40 3 * * *'
+  workflow_dispatch:
+    inputs:
+      todo:
+        description: 'Precios de TODAS las colecciones (primera carga o repaso completo)'
+        type: boolean
+        default: false
+      seco:
+        description: 'Prueba: lee TCGdex y resume, sin escribir'
+        type: boolean
+        default: false
+
+concurrency:
+  group: cartas-tcgdex
+  cancel-in-progress: false
+
+jobs:
+  cartas:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Sincronizar colecciones y precios
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: |
+          ARGS=""
+          if [ "${{ inputs.todo }}" = "true" ]; then ARGS="$ARGS --todo"; fi
+          if [ "${{ inputs.seco }}" = "true" ]; then ARGS="$ARGS --seco"; fi
+          python cartas_tcgdex.py $ARGS
