@@ -39,6 +39,9 @@ import requests
 import formato  # clasifica(): el nombre de coleccion que usa el radar en sus ofertas
 
 API = "https://api.tcgdex.net/v2/es"
+API_EN = "https://api.tcgdex.net/v2/en"
+# Pokemon TCG Pocket es el juego del movil: sus "colecciones" no son cartas fisicas.
+SERIES_FUERA = {"tcgp"}
 UA = "CromelBot/1.0 (+https://cromeltcg.com; colecciones Pokemon TCG)"
 ANOS_RECIENTES = 3          # colecciones con precio diario
 ANTIGUAS_POR_DIA = 10       # colecciones antiguas que se refrescan cada dia (por turnos)
@@ -167,7 +170,17 @@ def lee_colecciones() -> list[dict]:
         for s in ex.map(lambda x: get("/sets/%s" % x["id"]), lista):
             if s and s.get("id"):
                 out.append(s)
+    out = [s for s in out if (s.get("serie") or {}).get("id") not in SERIES_FUERA]
     out.sort(key=lambda s: (s.get("releaseDate") or "0000"), reverse=True)
+    # 44 colecciones antiguas (Edicion Basica, Jungla, Neo...) no traen cartas en
+    # español: se usa la lista inglesa (mismos id; nombres en ingles).
+    vacias = [s for s in out if not s.get("cards")]
+    with cf.ThreadPoolExecutor(max_workers=6) as ex:
+        for s, en in zip(vacias, ex.map(lambda s: get_en("/sets/%s" % s["id"]), vacias)):
+            if en and en.get("cards"):
+                s["cards"] = en["cards"]
+    log("cartas en ingles para %d de %d colecciones vacias en español" % (
+        sum(1 for s in vacias if s.get("cards")), len(vacias)))
     # Logos e imagenes que faltan en español: se cogen de otro idioma.
     sin_logo = [s for s in out if not s.get("logo")]
     with cf.ThreadPoolExecutor(max_workers=8) as ex:
@@ -188,9 +201,22 @@ def lee_colecciones() -> list[dict]:
     return out
 
 
+def get_en(ruta: str):
+    try:
+        r = S.get(API_EN + ruta, timeout=25)
+        return r.json() if r.status_code == 200 else None
+    except (requests.RequestException, ValueError):
+        return None
+
+
+def lee_carta(cid: str):
+    """La carta en español; si no existe en español (sets antiguos), la inglesa."""
+    return get("/cards/%s" % cid) or get_en("/cards/%s" % cid)
+
+
 def lee_cartas_con_precio(ids: list[str]) -> list[dict]:
     with cf.ThreadPoolExecutor(max_workers=HILOS) as ex:
-        return [c for c in ex.map(lambda i: get("/cards/%s" % i), ids) if c]
+        return [c for c in ex.map(lee_carta, ids) if c]
 
 
 def que_colecciones_con_precio(sets: list[dict], todo: bool, solo: set[str] | None) -> list[str]:
@@ -270,6 +296,19 @@ def main() -> int:
 
     if a.demo:
         quiero = solo or set(con_precio_ids)
+        # Igual que hace la base con la migracion 10: cartas de cada una y su madre.
+        ids = {s["id"] for s in sets}
+        n_por_set = {s["id"]: len(s.get("cards") or []) for s in sets}
+        def madre(i):
+            if i == "sma": return "sm115"
+            if i == "exu": return "ex10"
+            for suf in ("tg", "gg", "sv", "cc", "-c"):
+                if i.endswith(suf) and i[:-len(suf)] in ids:
+                    return i[:-len(suf)]
+            return None
+        for c in colecciones:
+            c["n_cartas"] = n_por_set.get(c["id"], 0)
+            c["padre_id"] = madre(c["id"])
         datos = {"generado": ahora,
                  "colecciones": colecciones,
                  "cartas": [f for f in con_precio if f["coleccion_id"] in quiero]}
@@ -284,6 +323,7 @@ def main() -> int:
         return 0
 
     upsert("colecciones", colecciones)
+    sb("DELETE", "colecciones?serie_id=in.(%s)" % ",".join(sorted(SERIES_FUERA)))  # las de Pocket que ya hubiera
     upsert("cartas", basicas)
     upsert("cartas", con_precio)
     n_val = sb("POST", "rpc/actualiza_valor_colecciones", json={}).json()
