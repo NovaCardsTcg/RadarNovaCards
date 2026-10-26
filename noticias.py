@@ -196,20 +196,52 @@ _GEMINI_BUENO: str | None = None
 _GEMINI_ROTO = False
 
 
+_GEMINI_LISTA: list[str] | None = None
+
+
+def _modelos_gemini() -> list[str]:
+    """Los modelos 'flash' que esta clave puede usar, los rapidos ('lite') primero.
+
+    Se pregunta a Google una vez por proceso: los nombres cambian cada pocos
+    meses y uno fijo en el codigo acaba dando 404 (paso con gemini-2.0-flash).
+    """
+    global _GEMINI_LISTA
+    if _GEMINI_LISTA is not None:
+        return _GEMINI_LISTA
+    _GEMINI_LISTA = []
+    try:
+        r = requests.get("https://generativelanguage.googleapis.com/v1beta/models?pageSize=200", timeout=20,
+                         headers={"x-goog-api-key": os.environ["GEMINI_API_KEY"]})
+        nombres = [m["name"].split("/", 1)[-1] for m in r.json().get("models", [])
+                   if "generateContent" in (m.get("supportedGenerationMethods") or [])]
+    except Exception as e:
+        print("[gemini] no se pudo listar modelos: %s" % str(e)[:80])
+        return _GEMINI_LISTA
+    malos = ("image", "tts", "audio", "live", "embed", "thinking", "learnlm", "robotics", "computer")
+    flash = [n for n in nombres if "flash" in n and not any(x in n for x in malos)]
+
+    def clave(n: str):
+        v = re.search(r"gemini-(\d+(?:\.\d+)?)", n)
+        return (0 if "lite" in n else 1, -(float(v.group(1)) if v else 0), "preview" in n or "exp" in n, len(n))
+    _GEMINI_LISTA = sorted(flash, key=clave)
+    print("[gemini] modelos disponibles: %s" % ", ".join(_GEMINI_LISTA[:8]) or "ninguno")
+    return _GEMINI_LISTA
+
+
 def gemini_post(cuerpo: dict, timeout: int = 120):
     """POST a generateContent con el primer modelo que responda, o None.
 
-    - 404 (modelo retirado) o tiempo agotado: se pasa al siguiente modelo.
-    - Se pide "pensar poco" (mucho mas rapido); si el modelo no admite esa
-      opcion (400), se repite sin ella.
-    - Si ninguno responde, Gemini queda apagado el resto de la pasada: asi el
-      radar no se queda minutos esperando en cada titular (traduce MyMemory).
+    - Modelos: el fijado en GEMINI_MODELO, el ultimo que funciono, los que
+      ofrece la clave (rapidos primero) y unos de reserva.
+    - 404 (retirado) o tiempo agotado: siguiente modelo.
+    - Se pide "pensar poco"; si el modelo no lo admite (400), se repite sin ello.
+    - Si ninguno responde, Gemini queda apagado el resto de la pasada.
     """
     global _GEMINI_BUENO, _GEMINI_ROTO
     if _GEMINI_ROTO:
         return None
     vistos: list[str] = []
-    for m in [os.environ.get("GEMINI_MODELO"), _GEMINI_BUENO, *GEMINI_MODELOS]:
+    for m in [os.environ.get("GEMINI_MODELO"), _GEMINI_BUENO, *_modelos_gemini()[:4], *GEMINI_MODELOS]:
         if not m or m in vistos:
             continue
         vistos.append(m)
@@ -217,15 +249,17 @@ def gemini_post(cuerpo: dict, timeout: int = 120):
             c = dict(cuerpo)
             if poco:
                 c["generationConfig"] = {**cuerpo.get("generationConfig", {}), "thinkingConfig": {"thinkingLevel": "low"}}
+            t0 = time.time()
             try:
                 r = requests.post("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent" % m,
                                   timeout=timeout, json=c,
                                   headers={"x-goog-api-key": os.environ["GEMINI_API_KEY"], "content-type": "application/json"})
             except requests.RequestException as e:
-                print("[gemini] %s: %s" % (m, str(e)[:80]))
+                print("[gemini] %s: sin respuesta en %ds (%s)" % (m, time.time() - t0, str(e)[:60]))
                 break                      # colgado: siguiente modelo
-            if r.status_code == 400 and poco and "think" in r.text.lower():
-                continue                   # no admite thinkingLevel: sin el
+            print("[gemini] %s: %d en %.1fs%s" % (m, r.status_code, time.time() - t0, "" if poco else " (sin thinking)"))
+            if r.status_code == 400 and poco:
+                continue                   # quiza no admite thinkingLevel: sin el
             if r.status_code == 404:
                 break                      # retirado: siguiente modelo
             _GEMINI_BUENO = m
