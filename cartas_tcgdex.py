@@ -67,10 +67,12 @@ def get(ruta: str, intentos: int = 3):
 
 
 def cents(v) -> int | None:
+    """Euros -> centimos. 0 se trata como "sin dato" (Cardmarket lo usa asi)."""
     try:
-        return None if v is None else int(round(float(v) * 100))
+        n = None if v is None else int(round(float(v) * 100))
     except (TypeError, ValueError):
         return None
+    return n or None
 
 
 # ------------------------------------------------------------------ TCGdex -> filas
