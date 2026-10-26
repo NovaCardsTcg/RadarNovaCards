@@ -138,7 +138,7 @@
   },
   {
    "juego": "magic",
-   "maximo": 3,
+   "maximo": 2,
    "nombre": "MTG Rocks",
    "url": "https://mtgrocks.com/feed/"
   },
@@ -159,6 +159,12 @@
    "maximo": 2,
    "nombre": "Eurogamer",
    "url": "https://www.eurogamer.net/feed"
+  },
+  {
+   "nombre": "Bleeding Cool",
+   "url": "https://bleedingcool.com/tag/funko/feed/",
+   "juego": "funko",
+   "maximo": 4
   }
  ],
  "palabras": [

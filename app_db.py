@@ -359,11 +359,56 @@ def recoge_noticias(config: dict, estado: dict) -> int:
         items = noticias.recoge(feeds)
         if not items:
             return 0
-        n = _rpc("radar_noticias", {"p_items": items}) or 0
+        try:
+            n = _rpc("radar_noticias", {"p_items": items}) or 0
+        except requests.HTTPError:
+            # Base sin la migracion 6 (juego 'funko' no admitido): las de Funko
+            # entran como 'tcg' en vez de perder todo el lote.
+            for x in items:
+                if x.get("juego") == "funko":
+                    x["juego"] = "tcg"
+            n = _rpc("radar_noticias", {"p_items": items}) or 0
         print("[app] noticias: %d titulares leidos, %s nuevos" % (len(items), n))
         return int(n)
     except Exception as e:
         print("[app] noticias: no se pudieron recoger (%s)" % str(e)[:160])
+        return 0
+
+
+def traduce_noticias_guardadas(estado: dict, maximo: int = 25) -> int:
+    """Pasa al español los titulares recogidos que se guardaron en ingles.
+
+    Las nuevas ya llegan traducidas (noticias.recoge); esto arregla las que
+    entraron antes. Como mucho una vez por hora y `maximo` por vez.
+    """
+    if not activo() or time.time() - estado.get("traduccion_ultima", 0) < 3600:
+        return 0
+    estado["traduccion_ultima"] = time.time()
+    try:
+        import noticias
+        h = {"apikey": CLAVE, "Authorization": "Bearer " + CLAVE, "Content-Type": "application/json"}
+        r = requests.get("%s/rest/v1/noticias?select=id,titulo,resumen&origen=eq.auto&order=publicada_en.desc&limit=200"
+                         % URL, headers=h, timeout=30)
+        r.raise_for_status()
+        n = 0
+        for x in r.json():
+            if n >= maximo:
+                break
+            if not (noticias.es_ingles(x["titulo"]) or noticias.es_ingles(x["resumen"])):
+                continue
+            titulo = noticias._limpia(noticias.traduce(x["titulo"]), 200)
+            resumen = noticias._limpia(noticias.traduce(x["resumen"]))
+            if (titulo, resumen) == (x["titulo"], x["resumen"]) or len(titulo) < 5 or len(resumen) < 10:
+                continue
+            p = requests.patch("%s/rest/v1/noticias?id=eq.%s" % (URL, x["id"]), headers=h, timeout=30,
+                               json={"titulo": titulo, "resumen": resumen})
+            if p.status_code in (200, 204):
+                n += 1
+        if n:
+            print("[app] noticias: %d titulares traducidos al español" % n)
+        return n
+    except Exception as e:
+        print("[app] noticias: no se pudieron traducir (%s)" % str(e)[:160])
         return 0
 
 

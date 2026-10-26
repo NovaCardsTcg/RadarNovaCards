@@ -41,7 +41,7 @@ HORAS_ENTRE = float(os.environ.get("CROMEL_IA_HORAS_ENTRE", "5"))
 MAX_INTENTOS = 6                 # llamadas a la API por ejecucion, como mucho
 MAX_EDAD_DIAS = 4                # no se cuentan noticias mas viejas
 MARCA_IA = "*Texto redactado con ayuda de inteligencia artificial."
-JUEGOS = ("pokemon", "one_piece", "lorcana", "magic", "dragon_ball", "riftbound", "mercado")
+JUEGOS = ("pokemon", "one_piece", "lorcana", "magic", "dragon_ball", "riftbound", "mercado", "funko")
 
 # Fuentes que no tienen feed: se lee su portada y se sacan los enlaces a articulos.
 PORTADAS = [
@@ -60,7 +60,7 @@ INTERES = re.compile(
     r"\b(release|releas|reveal|announce|set|expansion|booster|box|prerelease|promo|ban|restrict|"
     r"errata|tournament|championship|worlds|regional|event|price|sale|restock|grading|psa|cgc|"
     r"collab|partnership|store|retail|launch|preorder|pre-order|starter deck|"
-    r"lanzamiento|expansi|torneo|prohib)", re.I)
+    r"lanzamiento|expansi|torneo|prohib|funko|exclusive|vinyl|figure|convention|comic con)", re.I)
 
 
 def log(*a):
@@ -202,7 +202,7 @@ def puntua(c: dict, por_juego: dict[str, int]) -> float:
 
 
 # ------------------------------------------------------------------ Claude
-SISTEMA = """Eres redactor de Cromel, una web española de reposiciones y ofertas de cartas coleccionables (TCG). Escribes noticias breves, claras y exactas para coleccionistas y jugadores de España.
+SISTEMA = """Eres redactor de Cromel, una web española de reposiciones y ofertas de cartas coleccionables (TCG) y figuras Funko Pop. Escribes noticias breves, claras y exactas para coleccionistas y jugadores de España.
 
 Recibirás el texto de UN artículo de otra web (en inglés u otro idioma). Escribe una noticia NUEVA en español de España, con tus propias palabras.
 
@@ -210,13 +210,13 @@ Reglas estrictas:
 - Usa SOLO datos que aparezcan en el texto de la fuente: fechas, cifras, nombres de sets y productos. No inventes ni deduzcas nada. Si el texto no da un dato, no lo pongas.
 - No copies frases de la fuente: reformula. No traduzcas literalmente párrafos enteros.
 - Mantén los nombres oficiales de sets, cartas y productos tal y como aparecen (no los traduzcas si no los traduce la fuente).
-- Si es un rumor, una filtración, una opinión, una guía de estrategia, una lista de mazos o no trata de juegos de cartas coleccionables, o el texto no tiene información suficiente para unas 150 palabras, responde publicar=false.
+- Si es un rumor, una filtración, una opinión, una guía de estrategia, una lista de mazos o no trata de juegos de cartas coleccionables ni de figuras Funko Pop, o el texto no tiene información suficiente para unas 150 palabras, responde publicar=false.
 - Todo el texto en español de España, incluido el título y el resumen. No dejes frases en inglés (salvo nombres oficiales de sets, cartas y productos).
 - NO menciones de dónde viene la información: ni el nombre de la web de la fuente, ni "según...", ni "de acuerdo con...", ni enlaces. Escribe como si lo contara Cromel.
 - Reescribe de verdad: cambia el orden de las ideas, el enfoque y las expresiones, de modo que no parezca una versión de la fuente. Empieza por lo que más le importe a un coleccionista español (fechas, qué sale, cuándo y dónde).
 - Tono informativo y neutro. Sin primera persona, sin sensacionalismo, sin emojis, sin enlaces, sin llamadas a comprar.
 - titulo: 40-100 caracteres, concreto, sin comillas de clic fácil. resumen: 110-230 caracteres, una o dos frases. cuerpo: 180-380 palabras en 3-5 párrafos cortos separados por línea en blanco; puedes usar un subtítulo con "## " y una lista con "- " solo si ayuda. Formato permitido: párrafos, "## ", "- " y **negrita**.
-- juego: uno de pokemon, one_piece, lorcana, magic, dragon_ball, riftbound, mercado (mercado = precios, gradeo, ventas, tiendas).
+- juego: uno de pokemon, one_piece, lorcana, magic, dragon_ball, riftbound, mercado, funko (mercado = precios, gradeo, ventas, tiendas de cartas; funko = figuras Funko Pop).
 
 Responde SOLO con un JSON, sin texto alrededor:
 {"publicar": true|false, "motivo": "una frase", "titulo": "...", "resumen": "...", "cuerpo": "...", "juego": "..."}"""
@@ -409,6 +409,9 @@ def main(seco: bool = False) -> int:
             print(json.dumps(fila, ensure_ascii=False, indent=1))
             return 0
         resp = _sb("noticias", method="POST", json=fila, headers={"Prefer": "return=minimal"})
+        if resp.status_code == 400 and fila["juego"] == "funko":   # base sin la migracion 6
+            fila["juego"] = "tcg"
+            resp = _sb("noticias", method="POST", json=fila, headers={"Prefer": "return=minimal"})
         if resp.status_code in (200, 201, 204):
             log("PUBLICADA:", fila["slug"])
             return 0

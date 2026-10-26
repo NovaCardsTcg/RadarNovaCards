@@ -14,8 +14,10 @@ Solo se usan feeds que la propia web publica para que se lean con un programa
 from __future__ import annotations
 
 import html
+import os
 import re
 import time
+from urllib.parse import quote
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
@@ -32,6 +34,8 @@ NS = {
 
 # Palabras que delatan el juego de una noticia (en minusculas, sin tildes).
 JUEGOS = [
+    # Funko primero: "Funko Pop One Piece" es una noticia de Funko, no de cartas.
+    ("funko", ("funko",)),
     ("one_piece", ("one piece", "op-0", "op-1", "op0", "op1", "eb-0", "prb-")),
     ("pokemon", ("pokemon", "pokémon", "pikachu", "charizard", "tcg pocket")),
     ("lorcana", ("lorcana",)),
@@ -42,7 +46,7 @@ JUEGOS = [
 ]
 # Para que una noticia de un feed generico (ICv2...) entre, tiene que ir de TCG.
 SOLO_TCG = ("tcg", "trading card", "card game", "booster", "pokemon", "pokémon", "one piece", "magic: the gathering",
-            "lorcana", "dragon ball", "riftbound", "yu-gi-oh", "psa ", "cgc ", "grading", "elite trainer")
+            "lorcana", "dragon ball", "riftbound", "yu-gi-oh", "psa ", "cgc ", "grading", "elite trainer", "funko")
 RUIDO = ("casino", "bet", "slots", "poker online", "crypto", "betting")
 
 
@@ -171,6 +175,65 @@ def imagen_de_pagina(url: str) -> str | None:
     return None
 
 
+# ---------------------------------------------------------------- traduccion
+# La web es en español: los titulares y extractos que llegan en ingles se
+# traducen antes de guardarlos. Con GEMINI_API_KEY se usa Gemini (mejor
+# calidad); si no, MyMemory (gratis, sin clave, con limite diario). Si los dos
+# fallan, se deja el texto original antes que perder la noticia.
+_EN = re.compile(r"\b(the|and|of|to|with|will|from|this|is|are|for|new|its|their|reveals?|released?|gets|after)\b", re.I)
+_CACHE_TRAD: dict[str, str] = {}
+
+
+def es_ingles(t: str) -> bool:
+    return len(_EN.findall(t or "")) >= 2
+
+
+def _traduce_gemini(t: str) -> str | None:
+    clave = os.environ.get("GEMINI_API_KEY")
+    if not clave:
+        return None
+    try:
+        r = requests.post(
+            "https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent"
+            % os.environ.get("CROMEL_IA_MODELO", "gemini-2.0-flash"), timeout=60,
+            headers={"x-goog-api-key": clave, "content-type": "application/json"},
+            json={"contents": [{"parts": [{"text":
+                  "Traduce al español de España este texto de una noticia de cartas coleccionables o "
+                  "figuras Funko. Natural y fiel, sin añadir nada. No traduzcas nombres propios de sets, "
+                  "cartas, productos ni personajes. Devuelve solo la traducción.\n\n" + t}]}],
+                  "generationConfig": {"temperature": 0.2, "maxOutputTokens": 600}})
+        if r.status_code != 200:
+            return None
+        partes = r.json()["candidates"][0]["content"]["parts"]
+        out = "".join(p.get("text", "") for p in partes).strip()
+        return out or None
+    except Exception:
+        return None
+
+
+def _traduce_mymemory(t: str) -> str | None:
+    try:
+        r = requests.get("https://api.mymemory.translated.net/get?q=%s&langpair=en|es" % quote(t[:480]),
+                         timeout=25, headers={"User-Agent": UA})
+        d = r.json()
+        out = html.unescape((d.get("responseData") or {}).get("translatedText") or "").strip()
+        # Cuando se acaba el cupo diario, MyMemory devuelve un aviso en vez de la traduccion.
+        if not out or "MYMEMORY WARNING" in out.upper() or d.get("responseStatus") not in (200, "200"):
+            return None
+        return out
+    except Exception:
+        return None
+
+
+def traduce(t: str) -> str:
+    if not t or not es_ingles(t):
+        return t
+    if t not in _CACHE_TRAD:
+        _CACHE_TRAD[t] = _traduce_gemini(t) or _traduce_mymemory(t) or t
+        time.sleep(0.4)
+    return _CACHE_TRAD[t]
+
+
 def recoge(feeds: list[dict]) -> list[dict]:
     todo, vistos = [], set()
     for f in feeds:
@@ -182,6 +245,9 @@ def recoge(feeds: list[dict]) -> list[dict]:
                 if not x.get("imagen_url"):
                     x["imagen_url"] = imagen_de_pagina(x["fuente_url"])
                     time.sleep(0.5)
+                # La web es en español.
+                x["titulo"] = _limpia(traduce(x["titulo"]), 200)
+                x["resumen"] = _limpia(traduce(x["resumen"]))
                 todo.append(x)
         time.sleep(1.0)
     return todo

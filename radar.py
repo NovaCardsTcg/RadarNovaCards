@@ -997,6 +997,7 @@ def main() -> int:
     # Avisos de las alertas de la app (y respuestas a comentarios).
     app_db.envia_pendientes()
     app_db.recoge_noticias(config, estado)
+    app_db.traduce_noticias_guardadas(estado)
     aviso_reportes = app_db.avisa_reportes(estado)
     if aviso_reportes:
         avisos_sistema.append(aviso_reportes)
