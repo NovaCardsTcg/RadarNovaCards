@@ -93,6 +93,8 @@ jobs:
           VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
           VAPID_SUBJECT: ${{ secrets.VAPID_SUBJECT }}
           CROMEL_APP_URL: ${{ vars.CROMEL_APP_URL }}
+          # Traduccion de titulares al español (si falta, usa MyMemory gratis).
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
           # El bucle va cada 2 minutos, pero eso NO es lo que se pregunta a
           # cada tienda: de eso manda `cada_min` en config.json. Amazon a 2
