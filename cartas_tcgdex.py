@@ -47,6 +47,48 @@ HILOS = 8
 S = requests.Session()
 S.headers["User-Agent"] = UA
 
+# 118 de las 156 colecciones no tienen logo en español, y algunas tampoco
+# imagenes de cartas. El CDN de TCGdex las tiene en otros idiomas con la misma
+# ruta: se buscan ahi antes que dejar un hueco.
+IDIOMAS_RESPALDO = ["en", "fr", "de", "ja", "it"]
+
+
+def _existe(url: str) -> bool:
+    try:
+        return S.head(url, timeout=10, allow_redirects=True).status_code == 200
+    except requests.RequestException:
+        return False
+
+
+def logo_respaldo(s: dict) -> str | None:
+    """Base de la URL del logo en el primer idioma que lo tenga (sin extension)."""
+    serie = (s.get("serie") or {}).get("id")
+    if not serie:
+        return None
+    for lang in IDIOMAS_RESPALDO:
+        base = "https://assets.tcgdex.net/%s/%s/%s/logo" % (lang, serie, s["id"])
+        if _existe(base + ".png"):
+            return base
+    return None
+
+
+def imagenes_respaldo(set_id: str) -> dict[str, str]:
+    """localId -> imagen, mirando la misma coleccion en otros idiomas."""
+    out: dict[str, str] = {}
+    for lang in IDIOMAS_RESPALDO:
+        try:
+            r = S.get("https://api.tcgdex.net/v2/%s/sets/%s" % (lang, set_id), timeout=25)
+            if r.status_code != 200:
+                continue
+            for c in r.json().get("cards") or []:
+                if c.get("image") and str(c.get("localId")) not in out:
+                    out[str(c.get("localId"))] = c["image"]
+        except (requests.RequestException, ValueError):
+            continue
+        if out:
+            break
+    return out
+
 
 def log(*a):
     print("[cartas]", *a, flush=True)
@@ -99,11 +141,13 @@ def fila_basica(set_id: str, c: dict, ahora: str) -> dict:
             "nombre": c.get("name") or c["id"], "imagen": c.get("image"), "actualizado": ahora}
 
 
-def fila_con_precio(set_id: str, c: dict, ahora: str) -> dict:
+def fila_con_precio(set_id: str, c: dict, ahora: str, imagen: str | None = None) -> dict:
     p = (c.get("pricing") or {}).get("cardmarket") or {}
     trend, avg = p.get("trend"), p.get("avg")
     base = trend if trend is not None else avg
     f = fila_basica(set_id, c, ahora)
+    if not f["imagen"] and imagen:
+        f["imagen"] = imagen        # la de respaldo que ya tenia la lista del set
     f.update({
         "categoria": c.get("category"), "rareza": c.get("rarity"), "ilustrador": c.get("illustrator"),
         "precio_cents": cents(base), "precio_bajo_cents": cents(p.get("low")),
@@ -124,6 +168,23 @@ def lee_colecciones() -> list[dict]:
             if s and s.get("id"):
                 out.append(s)
     out.sort(key=lambda s: (s.get("releaseDate") or "0000"), reverse=True)
+    # Logos e imagenes que faltan en español: se cogen de otro idioma.
+    sin_logo = [s for s in out if not s.get("logo")]
+    with cf.ThreadPoolExecutor(max_workers=8) as ex:
+        for s, logo in zip(sin_logo, ex.map(logo_respaldo, sin_logo)):
+            if logo:
+                s["logo"] = logo
+    n_img = 0
+    sin_img = [s for s in out if any(not c.get("image") for c in (s.get("cards") or []))]
+    with cf.ThreadPoolExecutor(max_workers=6) as ex:
+        for s, resp in zip(sin_img, ex.map(lambda s: imagenes_respaldo(s["id"]), sin_img)):
+            for c in s.get("cards") or []:
+                img = resp.get(str(c.get("localId")))
+                if not c.get("image") and img:
+                    c["image"] = img
+                    n_img += 1
+    log("respaldo: %d logos de otros idiomas, %d imagenes de cartas" % (
+        sum(1 for s in sin_logo if s.get("logo")), n_img))
     return out
 
 
@@ -201,7 +262,9 @@ def main() -> int:
     ids_cartas = [cid for sid in con_precio_ids for cid in por_set.get(sid, [])]
     log("precios: %d colecciones, %d cartas a leer" % (len(con_precio_ids), len(ids_cartas)))
     completas = lee_cartas_con_precio(ids_cartas)
-    con_precio = [fila_con_precio(c.get("set", {}).get("id") or c["id"].rsplit("-", 1)[0], c, ahora) for c in completas]
+    img_por_id = {c["id"]: c.get("image") for s in sets for c in (s.get("cards") or []) if c.get("id")}
+    con_precio = [fila_con_precio(c.get("set", {}).get("id") or c["id"].rsplit("-", 1)[0], c, ahora, img_por_id.get(c["id"]))
+                  for c in completas]
     n_precio = sum(1 for f in con_precio if f["precio_cents"] is not None)
     log("leidas %d cartas, %d con precio (%.0fs)" % (len(con_precio), n_precio, time.time() - t0))
 
@@ -224,8 +287,14 @@ def main() -> int:
     upsert("cartas", basicas)
     upsert("cartas", con_precio)
     n_val = sb("POST", "rpc/actualiza_valor_colecciones", json={}).json()
-    log("guardado: %d colecciones, %d cartas, %d con precio; %s colecciones con valor (%.0fs)" % (
-        len(colecciones), len(basicas), n_precio, n_val, time.time() - t0))
+    # Historial: una foto del dia de las cartas que valen algo (migracion 8).
+    try:
+        n_hist = sb("POST", "rpc/snapshot_historial_cartas", json={}).json()
+        sb("POST", "rpc/poda_historial_cartas", json={"p_dias": 180})
+    except RuntimeError as e:
+        n_hist = "sin historial (%s)" % str(e)[:70]
+    log("guardado: %d colecciones, %d cartas, %d con precio; %s colecciones con valor; historial: %s (%.0fs)" % (
+        len(colecciones), len(basicas), n_precio, n_val, n_hist, time.time() - t0))
     return 0
 
 
