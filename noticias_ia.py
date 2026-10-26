@@ -40,7 +40,9 @@ POR_DIA = int(os.environ.get("CROMEL_IA_POR_DIA", "2"))
 HORAS_ENTRE = float(os.environ.get("CROMEL_IA_HORAS_ENTRE", "5"))
 MAX_INTENTOS = 6                 # llamadas a la API por ejecucion, como mucho
 MAX_EDAD_DIAS = 4                # no se cuentan noticias mas viejas
-MARCA_IA = "*Texto redactado con ayuda de inteligencia artificial."
+# Linea final de cada noticia (en cursiva) y el texto con el que se reconocen.
+MARCA_IA_TEXTO = "Texto redactado con ayuda de inteligencia artificial."
+MARCA_IA = "*%s*" % MARCA_IA_TEXTO
 JUEGOS = ("pokemon", "one_piece", "lorcana", "magic", "dragon_ball", "riftbound", "mercado", "funko")
 
 # Fuentes que no tienen feed: se lee su portada y se sacan los enlaces a articulos.
@@ -82,7 +84,7 @@ def ya_publicadas() -> tuple[set[str], set[str], list[dict]]:
     filas = r.json()
     urls = {f["fuente_url"] for f in filas}
     slugs = {f["slug"] for f in filas}
-    ia = [f for f in filas if MARCA_IA in (f.get("cuerpo") or "")]
+    ia = [f for f in filas if MARCA_IA_TEXTO in (f.get("cuerpo") or "")]
     return urls, slugs, ia
 
 
@@ -215,6 +217,7 @@ Reglas estrictas:
 - NO menciones de dónde viene la información: ni el nombre de la web de la fuente, ni "según...", ni "de acuerdo con...", ni enlaces. Escribe como si lo contara Cromel.
 - Reescribe de verdad: cambia el orden de las ideas, el enfoque y las expresiones, de modo que no parezca una versión de la fuente. Empieza por lo que más le importe a un coleccionista español (fechas, qué sale, cuándo y dónde).
 - Tono informativo y neutro. Sin primera persona, sin sensacionalismo, sin emojis, sin enlaces, sin llamadas a comprar.
+- Antes de responder, relee el texto y corrige la gramática: concordancias de género y número, tildes y puntuación.
 - titulo: 40-100 caracteres, concreto, sin comillas de clic fácil. resumen: 110-230 caracteres, una o dos frases. cuerpo: 180-380 palabras en 3-5 párrafos cortos separados por línea en blanco; puedes usar un subtítulo con "## " y una lista con "- " solo si ayuda. Formato permitido: párrafos, "## ", "- " y **negrita**.
 - juego: uno de pokemon, one_piece, lorcana, magic, dragon_ball, riftbound, mercado, funko (mercado = precios, gradeo, ventas, tiendas de cartas; funko = figuras Funko Pop).
 
