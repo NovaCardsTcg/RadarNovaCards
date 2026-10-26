@@ -35,6 +35,11 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          # Para enviar las alertas de precio por carta (Telegram / push).
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
+          VAPID_SUBJECT: ${{ secrets.VAPID_SUBJECT }}
+          CROMEL_APP_URL: ${{ vars.CROMEL_APP_URL }}
         run: |
           ARGS=""
           if [ "${{ inputs.todo }}" = "true" ]; then ARGS="$ARGS --todo"; fi

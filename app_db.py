@@ -228,7 +228,11 @@ def _eur(c: int | None) -> str:
 
 
 def _enlace(n: dict) -> str:
-    return "%s/chollo/%s" % (APP_URL, n["chollo_id"]) if APP_URL else ""
+    if not APP_URL:
+        return ""
+    if n.get("url"):                      # la base ya dice que abrir (migracion 9)
+        return APP_URL + n["url"]
+    return "%s/chollo/%s" % (APP_URL, n["chollo_id"]) if n.get("chollo_id") else ""
 
 
 def _texto(n: dict) -> tuple[str, str]:
@@ -237,6 +241,11 @@ def _texto(n: dict) -> tuple[str, str]:
         titulo = "%s te ha respondido" % (n["autor"] or "Alguien")
         cuerpo = (n["texto"] or "")[:200]
         tg = "\U0001F4AC <b>%s</b> en «%s»:\n%s" % (esc(titulo), esc(n["titulo"] or ""), esc(cuerpo))
+        return titulo, tg
+    if n["tipo"] == "carta":              # alerta de precio de una carta (Cardmarket)
+        titulo = "Bajada · %s" % n["titulo"]
+        tg = "\U0001F4C9 Tu alerta de precio\n<b>%s</b>\nAhora %s en Cardmarket (tu tope: %s)" % (
+            esc(n["titulo"] or ""), esc(_eur(n["precio_cents"]) or "ver precio"), esc(n["palabra"] or ""))
         return titulo, tg
     linea = "%s — %s" % (n["tienda"], _eur(n["precio_cents"]) or "ver precio")
     titulo = "%s · %s" % (ICONO.get(n["aviso"], "").split(" ", 1)[-1].capitalize(), n["titulo"])

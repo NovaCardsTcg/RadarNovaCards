@@ -293,6 +293,15 @@ def main() -> int:
         sb("POST", "rpc/poda_historial_cartas", json={"p_dias": 180})
     except RuntimeError as e:
         n_hist = "sin historial (%s)" % str(e)[:70]
+    # Alertas de precio por carta (migracion 9): se disparan y se envian ya.
+    try:
+        n_alertas = sb("POST", "rpc/avisa_alertas_carta", json={}).json()
+        if n_alertas:
+            import app_db
+            app_db.envia_pendientes()
+        log("alertas de precio disparadas: %s" % n_alertas)
+    except Exception as e:  # noqa: BLE001 - sin la migracion 9 o sin Telegram se sigue igual
+        log("alertas de precio: no disponibles (%s)" % str(e)[:80])
     log("guardado: %d colecciones, %d cartas, %d con precio; %s colecciones con valor; historial: %s (%.0fs)" % (
         len(colecciones), len(basicas), n_precio, n_val, n_hist, time.time() - t0))
     return 0

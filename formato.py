@@ -24,6 +24,8 @@ COLECCIONES = [
     (("caos creciente", "chaos rising"), "Caos Creciente"),
     (("oscuridad absoluta", "pitch black"), "Oscuridad Absoluta"),
     (("equilibrio perfecto", "perfect order"), "Equilibrio Perfecto"),
+    (("dominio delta", "delta reign"), "Dominio Delta"),
+    (("flowing fists",), "Flowing Fists"),
     (("heroes ascendentes", "ascended heroes"), "Héroes Ascendentes"),
     (("fuegos fantasmales", "phantasmal flames"), "Fuegos Fantasmales"),
     (("ciudad luminalia", "lumiose"), "Ciudad Luminalia"),
