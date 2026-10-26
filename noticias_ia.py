@@ -239,7 +239,7 @@ def _gemini(system: str, user: str) -> str | None:
     }
     for intento in range(3):
         try:
-            r = noticias.gemini_post(cuerpo, timeout=180)
+            r = noticias.gemini_post(cuerpo, timeout=480)
         except requests.RequestException as e:
             log("red:", str(e)[:80]); time.sleep(5); continue
         if r is None:
