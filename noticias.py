@@ -188,16 +188,37 @@ def es_ingles(t: str) -> bool:
     return len(_EN.findall(t or "")) >= 2
 
 
+# Google retira modelos de Gemini cada cierto tiempo (gemini-2.0-flash ya da 404).
+# Se prueban en orden y se recuerda el primero que responda; GEMINI_MODELO
+# permite fijar otro sin tocar el codigo.
+GEMINI_MODELOS = ["gemini-3.8-flash", "gemini-flash-latest"]
+_GEMINI_BUENO: str | None = None
+
+
+def gemini_post(cuerpo: dict, timeout: int = 120):
+    """POST a generateContent con el primer modelo que exista. Devuelve la respuesta."""
+    global _GEMINI_BUENO
+    r = None
+    vistos: list[str] = []
+    for m in [os.environ.get("GEMINI_MODELO"), _GEMINI_BUENO, *GEMINI_MODELOS]:
+        if not m or m in vistos:
+            continue
+        vistos.append(m)
+        r = requests.post("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent" % m,
+                          timeout=timeout, json=cuerpo,
+                          headers={"x-goog-api-key": os.environ["GEMINI_API_KEY"], "content-type": "application/json"})
+        if r.status_code == 404:
+            continue
+        _GEMINI_BUENO = m
+        return r
+    return r
+
+
 def _traduce_gemini(t: str) -> str | None:
-    clave = os.environ.get("GEMINI_API_KEY")
-    if not clave:
+    if not os.environ.get("GEMINI_API_KEY"):
         return None
     try:
-        r = requests.post(
-            "https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent"
-            % os.environ.get("CROMEL_IA_MODELO", "gemini-2.0-flash"), timeout=60,
-            headers={"x-goog-api-key": clave, "content-type": "application/json"},
-            json={"contents": [{"parts": [{"text":
+        r = gemini_post(timeout=60, cuerpo={"contents": [{"parts": [{"text":
                   "Traduce al español de España este texto de una noticia de cartas coleccionables o "
                   "figuras Funko. Natural y fiel, sin añadir nada. No traduzcas nombres propios de sets, "
                   "cartas, productos ni personajes. Devuelve solo la traducción.\n\n" + t}]}],

@@ -232,8 +232,6 @@ def _reintenta(codigo: int) -> bool:
 
 def _gemini(system: str, user: str) -> str | None:
     """Texto de Google Gemini (capa gratuita de Google AI Studio)."""
-    modelo = os.environ.get("CROMEL_IA_MODELO", "gemini-2.0-flash")
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{modelo}:generateContent"
     cuerpo = {
         "system_instruction": {"parts": [{"text": system}]},
         "contents": [{"parts": [{"text": user}]}],
@@ -241,8 +239,7 @@ def _gemini(system: str, user: str) -> str | None:
     }
     for intento in range(3):
         try:
-            r = requests.post(url, timeout=120, json=cuerpo,
-                              headers={"x-goog-api-key": os.environ["GEMINI_API_KEY"], "content-type": "application/json"})
+            r = noticias.gemini_post(cuerpo, timeout=120)
         except requests.RequestException as e:
             log("red:", str(e)[:80]); time.sleep(5); continue
         if _reintenta(r.status_code):
