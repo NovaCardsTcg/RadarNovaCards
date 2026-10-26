@@ -193,37 +193,58 @@ def es_ingles(t: str) -> bool:
 # permite fijar otro sin tocar el codigo.
 GEMINI_MODELOS = ["gemini-3.8-flash", "gemini-flash-latest"]
 _GEMINI_BUENO: str | None = None
+_GEMINI_ROTO = False
 
 
 def gemini_post(cuerpo: dict, timeout: int = 120):
-    """POST a generateContent con el primer modelo que exista. Devuelve la respuesta."""
-    global _GEMINI_BUENO
-    r = None
+    """POST a generateContent con el primer modelo que responda, o None.
+
+    - 404 (modelo retirado) o tiempo agotado: se pasa al siguiente modelo.
+    - Se pide "pensar poco" (mucho mas rapido); si el modelo no admite esa
+      opcion (400), se repite sin ella.
+    - Si ninguno responde, Gemini queda apagado el resto de la pasada: asi el
+      radar no se queda minutos esperando en cada titular (traduce MyMemory).
+    """
+    global _GEMINI_BUENO, _GEMINI_ROTO
+    if _GEMINI_ROTO:
+        return None
     vistos: list[str] = []
     for m in [os.environ.get("GEMINI_MODELO"), _GEMINI_BUENO, *GEMINI_MODELOS]:
         if not m or m in vistos:
             continue
         vistos.append(m)
-        r = requests.post("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent" % m,
-                          timeout=timeout, json=cuerpo,
-                          headers={"x-goog-api-key": os.environ["GEMINI_API_KEY"], "content-type": "application/json"})
-        if r.status_code == 404:
-            continue
-        _GEMINI_BUENO = m
-        return r
-    return r
+        for poco in (True, False):
+            c = dict(cuerpo)
+            if poco:
+                c["generationConfig"] = {**cuerpo.get("generationConfig", {}), "thinkingConfig": {"thinkingLevel": "low"}}
+            try:
+                r = requests.post("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent" % m,
+                                  timeout=timeout, json=c,
+                                  headers={"x-goog-api-key": os.environ["GEMINI_API_KEY"], "content-type": "application/json"})
+            except requests.RequestException as e:
+                print("[gemini] %s: %s" % (m, str(e)[:80]))
+                break                      # colgado: siguiente modelo
+            if r.status_code == 400 and poco and "think" in r.text.lower():
+                continue                   # no admite thinkingLevel: sin el
+            if r.status_code == 404:
+                break                      # retirado: siguiente modelo
+            _GEMINI_BUENO = m
+            return r
+    _GEMINI_ROTO = True
+    print("[gemini] ningun modelo responde: se usa la alternativa el resto de la pasada")
+    return None
 
 
 def _traduce_gemini(t: str) -> str | None:
     if not os.environ.get("GEMINI_API_KEY"):
         return None
     try:
-        r = gemini_post(timeout=60, cuerpo={"contents": [{"parts": [{"text":
+        r = gemini_post(timeout=45, cuerpo={"contents": [{"parts": [{"text":
                   "Traduce al español de España este texto de una noticia de cartas coleccionables o "
                   "figuras Funko. Natural y fiel, sin añadir nada. No traduzcas nombres propios de sets, "
                   "cartas, productos ni personajes. Devuelve solo la traducción.\n\n" + t}]}],
                   "generationConfig": {"temperature": 0.2, "maxOutputTokens": 600}})
-        if r.status_code != 200:
+        if r is None or r.status_code != 200:
             return None
         partes = r.json()["candidates"][0]["content"]["parts"]
         out = "".join(p.get("text", "") for p in partes).strip()

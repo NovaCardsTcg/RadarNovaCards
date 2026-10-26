@@ -146,7 +146,7 @@ def lee_articulo(url: str) -> dict | None:
         t = re.sub(r"\s+", " ", el.get_text(" ", strip=True))
         if len(t) >= 25 or (el.name in ("h2", "h3") and len(t) >= 4):
             partes.append(t)
-    texto = "\n".join(dict.fromkeys(partes))[:9000]
+    texto = "\n".join(dict.fromkeys(partes))[:7000]
     # Foto: la de cabecera de la propia fuente; si es un logo, la primera foto grande del articulo.
     img = _meta(sopa, "og:image", "twitter:image")
     if img:
@@ -239,9 +239,11 @@ def _gemini(system: str, user: str) -> str | None:
     }
     for intento in range(3):
         try:
-            r = noticias.gemini_post(cuerpo, timeout=120)
+            r = noticias.gemini_post(cuerpo, timeout=180)
         except requests.RequestException as e:
             log("red:", str(e)[:80]); time.sleep(5); continue
+        if r is None:
+            log("Gemini no responde"); return None
         if _reintenta(r.status_code):
             time.sleep(10 * (intento + 1)); continue
         if r.status_code != 200:
