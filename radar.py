@@ -1011,7 +1011,8 @@ def main() -> int:
     # GitHub, porque los logs de Actions no se pueden leer sin autenticacion y
     # la rama estado si es publica.
     if tiendas.DIAG_AMAZON:
-        estado["diag_amazon"] = {"cuando": ahora(), "paginas": list(tiendas.DIAG_AMAZON)}
+        estado["diag_amazon"] = {"cuando": ahora(), "paginas": list(tiendas.DIAG_AMAZON),
+                                 "por_invitacion": sorted(tiendas.INVITACION_AMAZON)}
 
     # Queda anotado si Telegram esta bien configurado y si los envios cuelan.
     # Se publica con el estado, asi que se puede comprobar sin entrar a los

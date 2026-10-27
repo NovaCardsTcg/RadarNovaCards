@@ -184,8 +184,33 @@ _EN = re.compile(r"\b(the|and|of|to|with|will|from|this|is|are|for|new|its|their
 _CACHE_TRAD: dict[str, str] = {}
 
 
+# Palabras muy frecuentes de cada idioma. Un titular "es español" solo si tiene
+# claramente mas de las nuestras; lo dudoso (mezclas a medio traducir, titulares
+# cortos en ingles) se vuelve a traducir: Gemini deja igual lo que ya esta bien.
+_ES = set("""el la los las un una unos unas y o de del al en con por para que se su sus es son ya mas más como sin
+sobre entre tras desde hasta muy todo todos todas nuevo nueva nuevos nuevas cartas carta colección coleccion precio
+precios llega llegan sale salen vuelve gracias hace este esta estos estas pero porque cuando donde también tambien""".split())
+_EN_PAL = set("""the and of to with will from this is are for new its their reveal reveals revealed release released
+gets get after at your you can into as by on in an a be has have had was were it that than more most all every first
+players player card cards deck decks price prices sells sold sees see hits hit turns turn spikes triples doubles
+upcoming unusual together steal once rare super iconic hero game games auction discover rediscover potentially
+highlight highlights intriguing nostalgic terrible awful entire shuts down across increase old opponent hand
+preorder up out how why what who best top over under just now set sets booster boxes""".split())
+
+
+def _cuenta(t: str) -> tuple[int, int]:
+    pal = re.findall(r"[a-záéíóúüñ']+", (t or "").lower())
+    return sum(p in _ES for p in pal), sum(p in _EN_PAL for p in pal)
+
+
+def es_espanol(t: str) -> bool:
+    es, en = _cuenta(t)
+    return es >= 2 and es > 2 * en
+
+
 def es_ingles(t: str) -> bool:
-    return len(_EN.findall(t or "")) >= 2
+    """Lo que hay que traducir: todo lo que no es claramente español."""
+    return bool((t or "").strip()) and not es_espanol(t)
 
 
 # Google retira modelos de Gemini cada cierto tiempo (gemini-2.0-flash ya da 404).

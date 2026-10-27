@@ -93,6 +93,47 @@ def imagenes_respaldo(set_id: str) -> dict[str, str]:
     return out
 
 
+# Segundo respaldo: el CDN de imagenes de pokemontcg.io tiene las cartas y logos
+# que TCGdex no tiene en ningun idioma (promos, Galerias, kits, McDonald's...).
+# Sus ids de coleccion se escriben distinto: se prueban variantes hasta que
+# responde el logo, y el formato del numero se prueba con la primera carta.
+PTCG = "https://images.pokemontcg.io"
+PTCG_A_MANO = {"cel25cc": "cel25c", "2011bw": "mcd11", "2012bw": "mcd12", "2014xy": "mcd14", "2015xy": "mcd15",
+               "2016xy": "mcd16", "2017sm": "mcd17", "2018sm": "mcd18", "2019sm": "mcd19", "2021swsh": "mcd21",
+               "2022swsh": "mcd22", "2023sv": "mcd23", "2024sv": "mcd24", "sm7.5": "sm75", "sm11.5": "sm115",
+               "sm3.5": "sm35", "swsh3.5": "swsh35", "swsh4.5": "swsh45", "swsh4.5sv": "swsh45sv", "xya": "xya"}
+
+
+def ptcg_id(set_id: str) -> str | None:
+    cand = [PTCG_A_MANO.get(set_id), set_id.replace(".5", "pt5"), set_id.replace(".", ""), set_id]
+    for c in dict.fromkeys(x for x in cand if x):
+        if _existe("%s/%s/logo.png" % (PTCG, c)):
+            return c
+    return None
+
+
+def respaldo_ptcg(s: dict) -> int:
+    """Logo y las imagenes que faltan de un set, desde pokemontcg.io. Devuelve cuantas."""
+    pid = ptcg_id(s["id"])
+    if not pid:
+        return 0
+    if not s.get("logo"):
+        s["logo"] = "%s/%s/logo.png" % (PTCG, pid)
+    faltan = [c for c in (s.get("cards") or []) if not c.get("image")]
+    if not faltan:
+        return 0
+    loc = str(faltan[0].get("localId") or "")
+    sin_ceros = loc.lstrip("0") or "0"
+    formato = next((f for f in (sin_ceros, loc) if _existe("%s/%s/%s.png" % (PTCG, pid, f))), None)
+    if formato is None:
+        return 0
+    quita = formato != loc
+    for c in faltan:
+        n = str(c.get("localId") or "")
+        c["image"] = "%s/%s/%s.png" % (PTCG, pid, (n.lstrip("0") or "0") if quita else n)
+    return len(faltan)
+
+
 def log(*a):
     print("[cartas]", *a, flush=True)
 
@@ -198,6 +239,11 @@ def lee_colecciones() -> list[dict]:
                     n_img += 1
     log("respaldo: %d logos de otros idiomas, %d imagenes de cartas" % (
         sum(1 for s in sin_logo if s.get("logo")), n_img))
+    # Lo que sigue faltando, de pokemontcg.io.
+    pendientes = [s for s in out if not s.get("logo") or any(not c.get("image") for c in (s.get("cards") or []))]
+    with cf.ThreadPoolExecutor(max_workers=6) as ex:
+        n_ptcg = sum(ex.map(respaldo_ptcg, pendientes))
+    log("respaldo pokemontcg.io: %d imagenes; colecciones aun sin logo: %d" % (n_ptcg, sum(1 for s in out if not s.get("logo"))))
     return out
 
 

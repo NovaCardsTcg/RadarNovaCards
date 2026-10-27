@@ -400,11 +400,15 @@ def traduce_noticias_guardadas(estado: dict, maximo: int = 25) -> int:
                          % URL, headers=h, timeout=30)
         r.raise_for_status()
         n = 0
+        # Las que ya se intentaron no se repiten cada hora (gastaria cupo de Gemini).
+        hechas = set(estado.get("traduccion_hechas", []))
         for x in r.json():
             if n >= maximo:
                 break
-            if not (noticias.es_ingles(x["titulo"]) or noticias.es_ingles(x["resumen"])):
+            if x["id"] in hechas or not (noticias.es_ingles(x["titulo"]) or noticias.es_ingles(x["resumen"])):
                 continue
+            hechas.add(x["id"])
+            estado["traduccion_hechas"] = list(hechas)[-600:]
             titulo = noticias._limpia(noticias.traduce(x["titulo"]), 200)
             resumen = noticias._limpia(noticias.traduce(x["resumen"]))
             if (titulo, resumen) == (x["titulo"], x["resumen"]) or len(titulo) < 5 or len(resumen) < 10:

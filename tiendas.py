@@ -335,6 +335,10 @@ def enlace_afiliado(url: str, etiqueta: str) -> str:
     return url + ("&" if "?" in url else "?") + "tag=" + etiqueta
 
 
+# ASIN que Amazon ofrece "por invitacion" en la ultima pasada (para el diagnostico).
+INVITACION_AMAZON: set[str] = set()
+
+
 def amazon(palabras: list[str], paginas: int = 2,
            vendedores: list[str] | None = None,
            afiliado: str = "", dirigidas: list[str] = ()) -> list[Producto]:
@@ -403,7 +407,14 @@ def amazon(palabras: list[str], paginas: int = 2,
                 if not titulo:
                     continue
                 precio = _precio_de_tarjeta(c)
-                agotado = "no disponible" in c.get_text(" ", strip=True).lower()
+                texto = c.get_text(" ", strip=True).lower()
+                agotado = "no disponible" in texto
+                # Productos que Amazon solo vende "por invitacion" (ETB, cajas
+                # muy buscadas): se pide la invitacion y Amazon decide a quien
+                # se la da. No se pueden comprar directamente: se marcan.
+                invitacion = "invitaci" in texto or "invitation" in texto
+                if invitacion:
+                    INVITACION_AMAZON.add(asin)
                 img = c.select_one("img.s-image")
                 out[asin] = Producto(
                     tienda="amazon", pid=asin, titulo=titulo,
@@ -412,6 +423,7 @@ def amazon(palabras: list[str], paginas: int = 2,
                     disponible=(precio is not None and not agotado),
                     imagen=img.get("src") if img else None,
                     precio_anterior=_con_iva_amazon(_precio_tachado(c, precio), titulo),
+                    etiquetas="por invitacion" if invitacion else "",
                 )
             time.sleep(random.uniform(1.0, 2.5))
     if not out:
