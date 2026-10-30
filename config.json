@@ -36,7 +36,9 @@
   "pokemoncenter": 30,
   "toyplanet": 10,
   "toysrus": 10,
-  "passarella": 120
+  "passarella": 120,
+  "pokemillon": 15,
+  "micelion": 30
  },
  "canal_publico": "@cromeltcg",
  "destacar": [
@@ -107,7 +109,13 @@
   "estuche",
   "deck box",
   "reacondicionado",
-  "seminuevo"
+  "seminuevo",
+  "challenge pokemon",
+  "miceliga",
+  "torneo",
+  "inscripcion",
+  "prerelease",
+  "presentacion"
  ],
  "excluir_patron": [
   "\\b[A-Z]{0,3}\\d{1,3}\\s*/\\s*[A-Z]{0,3}\\d{2,3}\\b",
@@ -239,7 +247,9 @@
   "pokemoncenter": false,
   "toyplanet": true,
   "toysrus": true,
-  "passarella": true
+  "passarella": true,
+  "pokemillon": true,
+  "micelion": true
  },
  "funko_descuento_min": 15
 }

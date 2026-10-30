@@ -19,6 +19,7 @@ Hay dos familias de fuente, y la diferencia importa:
 from __future__ import annotations
 
 import json
+import os
 import random
 import re
 import time
@@ -674,7 +675,10 @@ def _game_buscador(s) -> list[Producto]:
             # La tarjeta trae "Titulo Merchandising 6,99€ 42 puntos Añadir": el
             # titulo es lo que hay antes del primer precio.
             titulo = re.split(r"\d+\s*,\s*\d{2}\s*€|Precio recomendado|Exclusivo GAME", texto)[0]
-            titulo = re.sub(r"\s*Merchandising\s*$", "", titulo).strip() or pid
+            # Lo que dice la tarjeta de la disponibilidad: sin precio, el titulo
+            # arrastraba "Merchandising Agotado" o "Proximamente".
+            titulo = re.sub(r"(\s*(Merchandising|Agotado|Pr[oó]ximamente|Reservar|A[nñ]adir))+\s*$", "", titulo, flags=re.I).strip() or pid
+            disponible = None  # la tarjeta no lo dice: sale de la ficha
             m = re.search(r"(\d+)\s*,\s*(\d{2})\s*€", texto)
             precio = float("%s.%s" % m.groups()) if m else None
             # La foto va en la tarjeta como /_next/image?url=<media.game.es/...>:
@@ -686,7 +690,7 @@ def _game_buscador(s) -> list[Producto]:
                 mi = re.search(r"url=(https://media\.game\.es/[^&\s]+)", src)
                 imagen = mi.group(1) if mi else None
             out[pid] = Producto(tienda="game", pid=pid, titulo=titulo, url=url,
-                                precio=precio, imagen=imagen)
+                                precio=precio, imagen=imagen, disponible=disponible)
         time.sleep(random.uniform(0.8, 1.6))
     if not out:
         raise TiendaCaida("GAME: ni sitemap ni buscador devuelven productos")
@@ -986,6 +990,16 @@ def _lee_ficha(p: Producto) -> dict:
             if p.tienda in STOCK_EN_FICHA:
                 disponible = False
 
+        # GAME cambia los nombres de sus botones; el texto es lo estable:
+        # "Anadir a la cesta" (o "Reservar") se puede comprar online, y
+        # "Agotado" / "Avisame cuando este disponible" no.
+        if p.tienda == "game":
+            txt = sopa.get_text(" ", strip=True)
+            if re.search(r"A[nñ]adir a la cesta|Reservar", txt):
+                disponible = True
+            elif re.search(r"Agotado|av[ií]same cuando (est[eé]|vuelva)|no disponible online", txt, re.I):
+                disponible = False
+
         # Schema.org: lo rellena Carrefour y sirve de reserva para el resto.
         if precio is None or disponible is None:
             for ld in sopa.find_all("script", type="application/ld+json"):
@@ -1153,6 +1167,7 @@ TIENDAS_SHOPIFY = {
     "toyplanet": ("Toy Planet", "www.toyplanet.com", "cartas-y-sobres-coleccionables", "funko", "funko-pop", "funkos"),
     # Catalogo pequeno (~130 productos, una pagina): se lee entero.
     "frikimonkey": ("Frikimonkey", "frikimonkey.com"),
+    "pokemillon": ("Pokémillon", "pokemillon.com", "pokemon", "one-piece", "funko-pop"),
 }
 
 
@@ -1218,6 +1233,7 @@ def _shopify(dominio: str, clave: str, palabras: list[str],
 # entero de una tienda de hobby mezcla de todo.
 TIENDAS_WOO = {
     "flashstore": ("Flash Store", "flashstore.es"),
+    "micelion": ("Micelion Games", "miceliongames.com"),
 }
 BUSQUEDAS_WOO = ["pokemon", "one piece", "funko"]
 
@@ -1263,6 +1279,19 @@ def _woocommerce(dominio: str, clave: str) -> list[Producto]:
     return list(out.values())
 
 
+# ToysRUs responde "HTTP 451" fuera de Europa (GitHub Actions corre en EE. UU.).
+# Con PROXY_EU_TOKEN se le pide a traves del Worker de cromeltcg.com, que hace
+# la peticion desde un Durable Object en Europa occidental (app/worker/proxyEu.ts).
+PROXY_EU_URL = os.environ.get("PROXY_EU_URL") or "https://cromeltcg.com/api/eu"
+PROXY_EU_TOKEN = os.environ.get("PROXY_EU_TOKEN") or ""
+
+
+def _get_eu(s: requests.Session, url: str) -> requests.Response:
+    if not PROXY_EU_TOKEN:
+        return _get(s, url)
+    return _get(s, "%s?url=%s" % (PROXY_EU_URL, quote_plus(url)), headers={"x-proxy-token": PROXY_EU_TOKEN})
+
+
 def toysrus(palabras: list[str]) -> list[Producto]:
     """ToysRUs: la categoria Pokemon entera (~260 productos, 7 paginas).
 
@@ -1278,7 +1307,7 @@ def toysrus(palabras: list[str]) -> list[Producto]:
     paginas += ["https://www.toysrus.es/search?q=one+piece+card+game%%3Arelevance&page=%d" % n
                 for n in range(2)]
     for url in paginas:
-        h = _get(s, url).text
+        h = _get_eu(s, url).text
         nuevos = 0
         for t in h.split('class="product-item')[1:]:
             estado = t[:t.find('"')]

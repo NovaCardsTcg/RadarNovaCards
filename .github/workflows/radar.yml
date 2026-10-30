@@ -95,6 +95,9 @@ jobs:
           CROMEL_APP_URL: ${{ vars.CROMEL_APP_URL }}
           # Traduccion de titulares al español (si falta, usa MyMemory gratis).
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          # ToysRUs solo responde desde Europa: se le pide por el Worker de
+          # cromeltcg.com (app/worker/proxyEu.ts). Sin el secreto, se intenta directo.
+          PROXY_EU_TOKEN: ${{ secrets.PROXY_EU_TOKEN }}
         run: |
           # El bucle va cada 2 minutos, pero eso NO es lo que se pregunta a
           # cada tienda: de eso manda `cada_min` en config.json. Amazon a 2
