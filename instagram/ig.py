@@ -112,13 +112,20 @@ def _sesion_facebook(token: str, fila: dict | None, huella: str | None) -> tuple
     """Busca el Instagram conectado. Con un token de usuario, se queda con el de la pagina."""
     campos = "instagram_business_account{id,username}"
     try:
-        paginas = _pide("GET", "/me/accounts", token, fields="access_token," + campos).get("data") or []
+        paginas = _pide("GET", "/me/accounts", token, fields="name,access_token," + campos).get("data") or []
     except ErrorIG:
         # Ya es un token de pagina: /me es la propia pagina y no tiene /accounts.
         paginas = [dict(_pide("GET", "/me", token, fields=campos), access_token=token)]
     conectada = next((p for p in paginas if p.get("instagram_business_account")), None)
     if not conectada:
-        raise ErrorIG("ninguna pagina de Facebook de este token tiene un Instagram conectado")
+        # Nombres y permisos no son secretos, y sin ellos no se sabe que falta.
+        try:
+            permisos = [p["permission"] for p in _pide("GET", "/me/permissions", token).get("data") or []
+                        if p.get("status") == "granted"]
+        except ErrorIG:
+            permisos = ["(no se pueden leer)"]
+        raise ErrorIG("ninguna pagina de Facebook de este token tiene un Instagram conectado. Paginas que ve: %s. "
+                      "Permisos: %s" % ([p.get("name") or p.get("id") for p in paginas] or "ninguna", ", ".join(permisos)))
     cuenta = conectada["instagram_business_account"]
     token = conectada.get("access_token") or token
     ig_id = os.environ.get("IG_USER_ID", "").strip() or str(cuenta["id"])
@@ -183,6 +190,13 @@ def publica_fotos(urls: list[str], caption: str) -> dict:
     for h in hijos:
         _espera(h)
     c = _pide("POST", "%s/media" % yo, token, media_type="CAROUSEL", children=",".join(hijos), caption=caption)
+    return _publica(c["id"])
+
+
+def publica_historia(foto_url: str) -> dict:
+    """Historia con la portada del post. La API no deja poner enlaces ni encuestas."""
+    token, yo = sesion()
+    c = _pide("POST", "%s/media" % yo, token, media_type="STORIES", image_url=foto_url)
     return _publica(c["id"])
 
 

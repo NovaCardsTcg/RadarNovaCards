@@ -7,7 +7,7 @@ RESERVA). Las diapositivas son datos; las dibuja plantilla.html.
 
 Calendario (hora de Madrid, ver ig_ajustes.horas):
   primer hueco        -> chollos del dia (sellado)
-  huecos intermedios  -> publicidad de la app (app_promo.py)
+  huecos intermedios  -> Reels de la app, contenido util y frases (MEDIO)
   ultimo hueco        -> segun el dia de la semana (TARDE)
 
 Textos segun las guias de instagram-marketing: gancho en los primeros 125
@@ -22,7 +22,7 @@ import re
 
 import requests
 
-from . import app_promo, render, supa
+from . import app_promo, render, saber, supa
 
 WEB = "https://cromeltcg.com"
 MADRID = dt.timezone(dt.timedelta(hours=1))  # se corrige con zoneinfo si esta
@@ -36,6 +36,9 @@ except Exception:  # pragma: no cover
 # lunes=0 ... domingo=6
 TARDE = {0: "suben", 1: "reposiciones", 2: "valiosas", 3: "lanzamientos", 4: "funko",
          5: "otros_juegos", 6: "resumen"}
+# Segun las guias: Reels para llegar a gente nueva, utiles para guardados y envios,
+# frases para comentarios. La promocion en carrusel, una vez por semana.
+MEDIO = {0: "reel", 1: "saber", 2: "reel", 3: "frase", 4: "saber", 5: "reel", 6: "app"}
 RESERVA = ["valiosas", "chollos", "suben", "app"]
 
 NOMBRE_JUEGO = {"pokemon": "Pokémon", "one_piece": "One Piece", "lorcana": "Lorcana", "magic": "Magic",
@@ -329,14 +332,57 @@ def app() -> dict:
             "usados": ["app:%s:%d" % (serie["id"], g)]}
 
 
-GENERADORES = {"app": app, "chollos": chollos, "reposiciones": reposiciones, "funko": funko, "otros_juegos": otros_juegos,
+def reel() -> dict:
+    """La misma serie de la app, en video vertical. Lleva su propia cuenta de ganchos."""
+    usados = {u[5:] for u in _usados(60) if u.startswith("reel:")}
+    serie, g = app_promo.siguiente(usados)
+    gancho = serie["ganchos"][g]
+    escenas = [{"tipo": "app_portada", "etiqueta": serie["etiqueta"], "titulo": gancho, "sub": "", "capturas": serie["portada"]}]
+    escenas += [{"tipo": "paso", "captura": c, "titulo": t, "texto": x} for c, t, x in serie["pasos"]]
+    escenas.append({"tipo": "cta", "titulo": serie["cierre"], "pide": "Gratis y sin descargas · enlace en la bio"})
+    caption = (re.sub(r"</?em>", "", gancho) + "\n\n" + serie["texto"] + "\n\n" + serie["pide"] + "."
+               + "\n\n👉 cromeltcg.com (enlace en la bio)\n\n" + _hashtags(serie["tags"]))
+    return {"tipo": "reel", "reel": True, "diapositivas": escenas, "caption": caption,
+            "usados": ["reel:app:%s:%d" % (serie["id"], g)]}
+
+
+def _sin_usar(lista: list, clave, dias: int = 90):
+    usados = _usados(dias)
+    libres = [x for x in lista if clave(x) not in usados]
+    return (libres or lista)[0]
+
+
+def util() -> dict:
+    """Un tema de saber.py que no haya salido en 90 dias."""
+    t = _sin_usar(saber.TEMAS, lambda x: "saber:" + x["id"])
+    puntos = [{"tipo": "idea", "n": i + 1, "titulo": a, "texto": b} for i, (a, b) in enumerate(t["puntos"])]
+    diapos = ([{"tipo": "saber_portada", "etiqueta": t["etiqueta"], "titulo": t["portada"], "sub": t["sub"]}] + puntos
+              + [{"tipo": "saber_fin", "titulo": t["resumen"], "pide": t["pide"]}])
+    caption = (t["gancho"] + "\n\n" + "\n".join("%d. %s" % (i + 1, a) for i, (a, _) in enumerate(t["puntos"]))
+               + "\n\n" + t["pide"] + "."
+               + "\n\nSomos Cromel: te avisamos de ofertas y reposiciones TCG en España. Enlace en la bio."
+               + "\n\n" + _hashtags(t["tags"]))
+    return {"tipo": "saber", "diapositivas": diapos, "caption": caption, "usados": ["saber:" + t["id"]]}
+
+
+def frase() -> dict:
+    """Una sola imagen: una frase de coleccionista y una pregunta de verdad."""
+    f = _sin_usar(saber.FRASES, lambda x: "frase:" + x[0])
+    caption = (re.sub(r"</?em>", "", f[0]) + "\n\n" + f[1]
+               + "\n\nPara que no se te escape la próxima: cromeltcg.com (enlace en la bio)"
+               + "\n\n" + _hashtags("pokemon"))
+    return {"tipo": "frase", "diapositivas": [{"tipo": "frase", "titulo": f[0]}], "caption": caption,
+            "usados": ["frase:" + f[0]]}
+
+
+GENERADORES = {"app": app, "reel": reel, "saber": util, "frase": frase, "chollos": chollos, "reposiciones": reposiciones, "funko": funko, "otros_juegos": otros_juegos,
                "suben": suben, "valiosas": valiosas, "lanzamientos": lanzamientos, "resumen": resumen}
 
 
 def tipo_del_hueco(indice: int, fecha: dt.date, total: int = 2) -> str:
     if indice == 0:
         return "chollos"
-    return TARDE[fecha.weekday()] if indice == total - 1 else "app"
+    return TARDE[fecha.weekday()] if indice == total - 1 else MEDIO[fecha.weekday()]
 
 
 def genera(tipo: str) -> dict | None:

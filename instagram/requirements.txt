@@ -2,3 +2,4 @@ requests>=2.31
 playwright>=1.48
 yt-dlp>=2025.1.1
 pillow>=10.0
+imageio-ffmpeg>=0.5

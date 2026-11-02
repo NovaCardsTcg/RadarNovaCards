@@ -153,13 +153,29 @@ def publica_auto(fila: dict, tmp: Path) -> dict:
     post = contenido.genera(tipo)
     if not post:
         raise SinMaterial("hoy no hay material para ningun post")
+    datos = {"usados": post["usados"], "generar": tipo}
+    if post.get("reel"):
+        video = render.video(post["diapositivas"], tmp)
+        clave = "reels/%d.mp4" % fila["id"]
+        url = supa.sube(clave, video.read_bytes(), "video/mp4")
+        try:
+            res = ig.publica_reel(url, post["caption"])
+        finally:
+            supa.borra([clave])
+        datos["archivos"] = []
+        return {"res": res, "caption": post["caption"], "tipo": post["tipo"], "datos": datos}
     rutas = render.dibuja(post["diapositivas"], tmp)
-    if len(rutas) < 2:
-        raise SinMaterial("solo ha salido %d diapositiva" % len(rutas))
+    if not rutas:
+        raise SinMaterial("no ha salido ninguna diapositiva")
     urls, claves = _sube_fotos(rutas, "posts/%d" % fila["id"])
     res = ig.publica_fotos(urls, post["caption"])
-    return {"res": res, "caption": post["caption"], "tipo": post["tipo"],
-            "datos": {"usados": post["usados"], "archivos": claves, "generar": tipo}}
+    # Que lo vean tambien los seguidores: una historia que falle no estropea el post.
+    try:
+        ig.publica_historia(urls[0])
+    except Exception as e:
+        print("[ig] sin historia: %s" % str(e)[:150])
+    datos["archivos"] = claves
+    return {"res": res, "caption": post["caption"], "tipo": post["tipo"], "datos": datos}
 
 
 def publica_tiktok(fila: dict, tmp: Path) -> dict:
@@ -184,7 +200,7 @@ def publica_tiktok(fila: dict, tmp: Path) -> dict:
     return {"res": res, "caption": texto, "tipo": "tiktok", "datos": datos}
 
 
-NOMBRES = {"app": "Publicidad de la app", "chollos": "Chollos del día", "reposiciones": "Reposiciones", "funko": "Funko en oferta",
+NOMBRES = {"reel": "Reel de la app", "saber": "Guía útil", "frase": "Frase", "app": "Publicidad de la app", "chollos": "Chollos del día", "reposiciones": "Reposiciones", "funko": "Funko en oferta",
            "otros_juegos": "Otros juegos", "suben": "Cartas que suben", "valiosas": "Cartas más caras",
            "lanzamientos": "Lanzamientos", "resumen": "Resumen semanal", "tiktok": "TikTok → Reel"}
 
@@ -194,7 +210,17 @@ def procesa_cola() -> int:
                      publicar_desde="lte." + _ahora().isoformat(), order="publicar_desde", limit=str(MAX_POR_PASADA))
     if not filas:
         return 0
-    if ig.cuota_restante() < len(filas):
+    try:
+        cuota = ig.cuota_restante()
+    except ig.ErrorIG as e:
+        # La cola sigue intacta: sale en cuanto el token funcione. Se avisa una vez al dia.
+        print("[ig] no puedo conectar con Instagram: %s" % e)
+        nota = supa.inserta("ig_publicaciones", [{"tipo": "nota", "origen_id": "nota:token:" + dt.date.today().isoformat(),
+                                                  "estado": "descartado", "error": str(e)[:300]}], "origen_id")
+        if nota:
+            telegram("⚠️ No puedo conectar con Instagram:\n<code>%s</code>" % esc(str(e)[:400]))
+        return 0
+    if cuota < len(filas):
         print("[ig] sin cuota de publicacion hoy")
         return 0
     hechas = 0
@@ -253,6 +279,9 @@ def prueba(tipos: list[str]) -> None:
         post = contenido.GENERADORES[t]()
         if not post:
             print("%-13s sin material" % t)
+            continue
+        if post.get("reel"):
+            print("%-13s %s" % (t, render.video(post["diapositivas"], salida / t)))
             continue
         rutas = render.dibuja(post["diapositivas"], salida / t)
         (salida / t / "caption.txt").write_text(post["caption"], encoding="utf-8")

@@ -24,9 +24,9 @@ AYUDA = """<b>Instagram</b>
 /ig usuario cromeltcg - tu usuario de TikTok
 /ig margen 60 - minutos de margen antes de pasar un TikTok (modo todo)
 /ig horas 13:30 18:00 20:30 - horas de los posts automaticos
-/ig ya chollos - publicar ya un post (app, chollos, reposiciones, funko, otros_juegos, suben, valiosas, lanzamientos, resumen)"""
+/ig ya chollos - publicar ya un post (reel, saber, frase, app, chollos, reposiciones, funko, otros_juegos, suben, valiosas, lanzamientos, resumen)"""
 
-TIPOS = ("app", "chollos", "reposiciones", "funko", "otros_juegos", "suben", "valiosas", "lanzamientos", "resumen")
+TIPOS = ("reel", "saber", "frase", "app", "chollos", "reposiciones", "funko", "otros_juegos", "suben", "valiosas", "lanzamientos", "resumen")
 ICONO = {"pendiente": "⏳", "esperando": "❓", "publicando": "🔄", "publicado": "✅", "error": "❌", "descartado": "🚫"}
 
 

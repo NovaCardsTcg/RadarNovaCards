@@ -103,8 +103,37 @@ def _prepara(diapos: list[dict]) -> list[dict]:
     return listas
 
 
-def dibuja(diapos: list[dict], carpeta: Path) -> list[Path]:
-    """Devuelve las rutas de los JPEG (1080x1350), en orden."""
+def video(escenas: list[dict], carpeta: Path) -> Path:
+    """Reel vertical: cada escena con un zoom lento. Devuelve el MP4 (H.264, AAC).
+
+    El audio es silencio: la API no deja elegir musica de Instagram, y las
+    canciones de moda no se pueden incrustar sin licencia.
+    """
+    import subprocess
+
+    import imageio_ffmpeg
+
+    fotos = dibuja(escenas, carpeta, alto=1920)
+    salida = carpeta / "reel.mp4"
+    fps, entradas, filtros = 30, [], []
+    for i, f in enumerate(fotos):
+        # La primera (el gancho) y la ultima se quedan menos: lo que importa son los 3 primeros segundos.
+        marcos = int((2.2 if i == 0 else 2.6 if i == len(fotos) - 1 else 3.2) * fps)
+        entradas += ["-i", str(f)]
+        filtros.append("[%d:v]scale=1188:2112,zoompan=z='min(zoom+0.0007,1.1)':x='iw/2-(iw/zoom/2)':"
+                       "y='ih/2-(ih/zoom/2)':d=%d:s=1080x1920:fps=%d,format=yuv420p[v%d]" % (i, marcos, fps, i))
+    union = "".join("[v%d]" % i for i in range(len(fotos))) + "concat=n=%d:v=1:a=0[v]" % len(fotos)
+    orden = [imageio_ffmpeg.get_ffmpeg_exe(), "-y", "-loglevel", "error", *entradas,
+             "-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo",
+             "-filter_complex", ";".join(filtros + [union]), "-map", "[v]", "-map", "%d:a" % len(fotos),
+             "-c:v", "libx264", "-preset", "medium", "-crf", "21", "-c:a", "aac", "-shortest",
+             "-movflags", "+faststart", str(salida)]
+    subprocess.run(orden, check=True, timeout=300)
+    return salida
+
+
+def dibuja(diapos: list[dict], carpeta: Path, alto: int = 1350) -> list[Path]:
+    """Devuelve las rutas de los JPEG (1080 de ancho), en orden. alto=1920 para Reels."""
     from playwright.sync_api import sync_playwright
 
     diapos = _prepara(diapos)[:10]  # un carrusel admite 10 como mucho
@@ -120,9 +149,11 @@ def dibuja(diapos: list[dict], carpeta: Path) -> list[Path]:
         # En el PC se puede usar Edge (IG_NAVEGADOR=msedge) sin bajar Chromium.
         canal = os.environ.get("IG_NAVEGADOR") or None
         nav = p.chromium.launch(channel=canal) if canal else p.chromium.launch()
-        pag = nav.new_page(viewport={"width": 1080, "height": 1350}, device_scale_factor=1)
+        pag = nav.new_page(viewport={"width": 1080, "height": alto}, device_scale_factor=1)
         pag.goto((AQUI / "plantilla.html").as_uri())
         pag.wait_for_load_state("networkidle")
+        if alto == 1920:
+            pag.evaluate("document.documentElement.classList.add('vertical')")
         for i, d in enumerate(diapos, 1):
             fallos = pag.evaluate("([d, n, t, f]) => pinta(d, n, t, f)", [d, i, len(diapos), fecha])
             if fallos:

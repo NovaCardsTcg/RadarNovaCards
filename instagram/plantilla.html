@@ -107,6 +107,32 @@
   .paso .pie, .app-portada .pie { z-index: 6; left: 0; right: 0; bottom: 0; padding: 70px 64px 36px;
     background: linear-gradient(transparent, var(--bg) 62%); }
 
+  /* Contenido util y frases: solo texto, para leer en 2 segundos */
+  .saber { position: absolute; inset: 0; }
+  .saber .centro { position: absolute; left: 72px; right: 72px; top: 50%; transform: translateY(-50%); }
+  .saber h1 { font-family: 'Baloo 2'; font-weight: 800; font-size: 108px; line-height: 1.02; letter-spacing: -1px; }
+  .saber p { margin-top: 26px; font-size: 42px; line-height: 1.3; color: var(--muted); font-weight: 500; }
+  .saber .desliza { margin-top: 44px; font-weight: 800; font-size: 34px; color: var(--accent); }
+  .saber .n { font-family: 'Baloo 2'; font-weight: 800; font-size: 170px; line-height: .9; color: var(--accent); }
+  .saber h2 { margin-top: 14px; font-family: 'Baloo 2'; font-weight: 800; font-size: 88px; line-height: 1.05; }
+  .saber.frase h1 { font-size: 104px; line-height: 1.08; }
+  .saber.fin h1 { font-size: 80px; }
+  .saber.fin .pide { margin-top: 40px; display: inline-block; background: var(--accent); color: var(--bg); font-weight: 800;
+    font-size: 38px; padding: 16px 32px; border-radius: 20px; }
+
+  /* Reel 1080x1920: Instagram tapa unos 220 px arriba y 340 abajo */
+  html.vertical, html.vertical body, html.vertical .lienzo { height: 1920px; }
+  html.vertical .cab { top: 130px; }
+  html.vertical .num, html.vertical .pie { display: none; }
+  html.vertical .app-portada .texto, html.vertical .paso .texto { top: 240px; }
+  html.vertical .app-portada h1 { font-size: 100px; }
+  html.vertical .app-portada .movil { width: 420px; top: 860px; }
+  html.vertical .app-portada .m0 { top: 920px; transform: translateX(-50%) translateX(-300px) rotate(-8deg); }
+  html.vertical .app-portada .m2 { top: 920px; transform: translateX(-50%) translateX(300px) rotate(8deg); }
+  html.vertical .paso h2 { font-size: 86px; }
+  html.vertical .paso p { font-size: 40px; }
+  html.vertical .paso .movil { width: 600px; top: 540px; }
+
   /* Llamada final */
   .final { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 0 80px; }
   .final img { width: 220px; height: 220px; margin-bottom: 30px; filter: drop-shadow(0 0 60px rgba(46,235,229,.35)); }
@@ -160,6 +186,15 @@ function pinta(d, n, total, fecha) {
     h = `<div class="cifras">${cab}<div class="texto"><span class="etiqueta">${esc(d.etiqueta)}</span><h1>${conEm(d.titulo)}</h1>
       <div class="lista">${d.filas.map((f) => `<div class="c"><span>${f[0]}</span><span>${esc(f[1])}</span><span>${f[2]}</span></div>`).join('')}</div></div>
       ${pie('Últimos 7 días')}</div>`
+  } else if (d.tipo === 'saber_portada') {
+    h = `<div class="saber">${cab}<div class="centro"><span class="etiqueta">${esc(d.etiqueta)}</span><h1>${conEm(d.titulo)}</h1>
+      <p>${esc(d.sub)}</p><div class="desliza">Desliza →</div></div>${pie(fecha)}</div>`
+  } else if (d.tipo === 'idea') {
+    h = `<div class="saber">${cab}<div class="centro"><div class="n">${d.n}</div><h2>${esc(d.titulo)}</h2><p>${esc(d.texto)}</p></div>${pie('Guía Cromel')}</div>`
+  } else if (d.tipo === 'saber_fin') {
+    h = `<div class="saber fin">${cab}<div class="centro"><h1>${esc(d.titulo)}</h1><div class="pide">${esc(d.pide)}</div></div>${pie('Guía Cromel')}</div>`
+  } else if (d.tipo === 'frase') {
+    h = `<div class="saber frase">${cab.replace(/<span class="num">.*?<\/span>/, '')}<div class="centro"><h1>${conEm(d.titulo)}</h1></div>${pie('Caza TCG')}</div>`
   } else if (d.tipo === 'app_portada') {
     const m = d.capturas.map((u, i) => `<div class="movil m${[1, 0, 2][i]}"><img src="${u}"></div>`).join('')
     h = `<div class="app-portada">${cab}<div class="texto"><span class="etiqueta">${esc(d.etiqueta)}</span><h1>${conEm(d.titulo)}</h1><p>${esc(d.sub)}</p></div>

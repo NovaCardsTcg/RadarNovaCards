@@ -14,7 +14,7 @@ on:
         required: false
         default: ''
         type: choice
-        options: ['', app, chollos, reposiciones, funko, otros_juegos, suben, valiosas, lanzamientos, resumen]
+        options: ['', reel, saber, frase, app, chollos, reposiciones, funko, otros_juegos, suben, valiosas, lanzamientos, resumen]
 
 concurrency:
   group: instagram
