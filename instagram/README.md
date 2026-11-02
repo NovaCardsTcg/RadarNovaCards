@@ -17,6 +17,7 @@ GitHub Actions cada 20 min ─► instagram/publicar.py
 | Cuándo (hora de España) | Post |
 |---|---|
 | 13:30 todos los días | **Chollos del día**: lo mejor de sellado de las últimas 36 h |
+| 18:00 todos los días | **Publicidad de la app** (`app_promo.py`): 6 series con 3 ganchos cada una, 18 portadas sin repetir |
 | 20:30 lunes | Cartas que más suben en 7 días |
 | 20:30 martes | Reposiciones |
 | 20:30 miércoles | Las cartas más caras de una colección reciente |
@@ -78,7 +79,8 @@ Puntos débiles conocidos:
 ## Comandos
 
 `/ig ayuda` los lista todos: `on`/`off`, `si N`/`no N`, `tiktok todo|elegir|nada`,
-`usuario`, `margen`, `horas`, `ya <tipo>`.
+`usuario`, `margen`, `horas`, `ya <tipo>`. Con varias horas, la primera es de chollos,
+la última va según el día de la semana y las del medio son publicidad de la app.
 
 ## Límites
 

@@ -23,10 +23,10 @@ AYUDA = """<b>Instagram</b>
 /ig tiktok todo|elegir|nada - que hacer con tus TikToks nuevos
 /ig usuario cromeltcg - tu usuario de TikTok
 /ig margen 60 - minutos de margen antes de pasar un TikTok (modo todo)
-/ig horas 13:30 20:30 - horas de los posts automaticos
-/ig ya chollos - publicar ya un post (chollos, reposiciones, funko, otros_juegos, suben, valiosas, lanzamientos, resumen)"""
+/ig horas 13:30 18:00 20:30 - horas de los posts automaticos
+/ig ya chollos - publicar ya un post (app, chollos, reposiciones, funko, otros_juegos, suben, valiosas, lanzamientos, resumen)"""
 
-TIPOS = ("chollos", "reposiciones", "funko", "otros_juegos", "suben", "valiosas", "lanzamientos", "resumen")
+TIPOS = ("app", "chollos", "reposiciones", "funko", "otros_juegos", "suben", "valiosas", "lanzamientos", "resumen")
 ICONO = {"pendiente": "⏳", "esperando": "❓", "publicando": "🔄", "publicado": "✅", "error": "❌", "descartado": "🚫"}
 
 
@@ -113,7 +113,7 @@ def comando(arg: str) -> str:
         if sub == "horas" and resto:
             horas = [h for h in resto if re.fullmatch(r"([01]?\d|2[0-3]):[0-5]\d", h)]
             if not horas:
-                return "Uso: /ig horas 13:30 20:30"
+                return "Uso: /ig horas 13:30 18:00 20:30"
             _cambia_ajustes({"horas": horas[:4]})
             return "Posts automáticos a las %s (hora de España)." % ", ".join(horas[:4])
         if sub == "ya" and resto and resto[0] in TIPOS:

@@ -132,7 +132,7 @@ def programa_huecos(aj: dict) -> None:
         hueco = ahora.replace(hour=hh, minute=mm, second=0, microsecond=0)
         if not hueco <= ahora < hueco + VENTANA_HUECO:
             continue
-        tipo = contenido.tipo_del_hueco(i, ahora.date())
+        tipo = contenido.tipo_del_hueco(i, ahora.date(), len(aj["horas"]))
         supa.inserta("ig_publicaciones", [{"tipo": tipo, "origen_id": "auto:%s:%s" % (ahora.date().isoformat(), h),
                                            "estado": "pendiente", "datos": {"generar": tipo}}], "origen_id")
 
@@ -184,7 +184,7 @@ def publica_tiktok(fila: dict, tmp: Path) -> dict:
     return {"res": res, "caption": texto, "tipo": "tiktok", "datos": datos}
 
 
-NOMBRES = {"chollos": "Chollos del día", "reposiciones": "Reposiciones", "funko": "Funko en oferta",
+NOMBRES = {"app": "Publicidad de la app", "chollos": "Chollos del día", "reposiciones": "Reposiciones", "funko": "Funko en oferta",
            "otros_juegos": "Otros juegos", "suben": "Cartas que suben", "valiosas": "Cartas más caras",
            "lanzamientos": "Lanzamientos", "resumen": "Resumen semanal", "tiktok": "TikTok → Reel"}
 

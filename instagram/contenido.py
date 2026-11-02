@@ -6,8 +6,12 @@ o None si hoy no hay material suficiente (entonces se prueba el siguiente de
 RESERVA). Las diapositivas son datos; las dibuja plantilla.html.
 
 Calendario (hora de Madrid, ver ig_ajustes.horas):
-  1.er hueco del dia  -> chollos del dia (sellado)
-  2.o hueco           -> segun el dia de la semana (TARDE)
+  primer hueco        -> chollos del dia (sellado)
+  huecos intermedios  -> publicidad de la app (app_promo.py)
+  ultimo hueco        -> segun el dia de la semana (TARDE)
+
+Textos segun las guias de instagram-marketing: gancho en los primeros 125
+caracteres, una sola peticion y 5 hashtags que rotan (30 se leen como spam).
 """
 
 from __future__ import annotations
@@ -18,7 +22,7 @@ import re
 
 import requests
 
-from . import supa
+from . import app_promo, render, supa
 
 WEB = "https://cromeltcg.com"
 MADRID = dt.timezone(dt.timedelta(hours=1))  # se corrige con zoneinfo si esta
@@ -32,22 +36,24 @@ except Exception:  # pragma: no cover
 # lunes=0 ... domingo=6
 TARDE = {0: "suben", 1: "reposiciones", 2: "valiosas", 3: "lanzamientos", 4: "funko",
          5: "otros_juegos", 6: "resumen"}
-RESERVA = ["valiosas", "chollos", "suben"]
+RESERVA = ["valiosas", "chollos", "suben", "app"]
 
 NOMBRE_JUEGO = {"pokemon": "Pokémon", "one_piece": "One Piece", "lorcana": "Lorcana", "magic": "Magic",
                 "dragon_ball": "Dragon Ball", "riftbound": "Riftbound"}
+# (de nicho, intermedios, generales): se cogen 2 + 1 + 1 al azar en cada post.
 HASHTAGS = {
-    "base": ["#cromeltcg", "#tcgespaña", "#coleccionismo", "#cartascoleccionables"],
-    "pokemon": ["#pokemontcg", "#pokemonespaña", "#cartaspokemon", "#pokemoncards", "#pokemon"],
-    "one_piece": ["#onepiececardgame", "#onepiecetcg", "#onepiece"],
-    "lorcana": ["#disneylorcana", "#lorcana"],
-    "magic": ["#mtg", "#magicthegathering"],
-    "dragon_ball": ["#dragonballsuper", "#dbsfusionworld"],
-    "funko": ["#funkopop", "#funko", "#funkoespaña", "#funkopopcollector"],
-    "ofertas": ["#ofertas", "#chollos", "#reposicion"],
+    "pokemon": (["#cartaspokemonespaña", "#pokemontcgespaña", "#coleccionistapokemon", "#cazacartas", "#sobrespokemon"],
+                ["#cartaspokemon", "#pokemonespaña"], ["#pokemontcg", "#pokemoncards"]),
+    "one_piece": (["#onepiececardgameespaña", "#onepiecetcgespaña", "#cartasonepiece"],
+                  ["#onepiececardgame", "#onepiecetcg"], ["#onepiece"]),
+    "lorcana": (["#lorcanaespaña", "#cartaslorcana", "#tcgespaña"], ["#disneylorcana"], ["#lorcana"]),
+    "magic": (["#magicespaña", "#mtgespaña", "#tcgespaña"], ["#magicthegathering"], ["#mtg"]),
+    "dragon_ball": (["#dragonballtcg", "#fusionworldespaña", "#tcgespaña"], ["#dragonballsuper"], ["#dragonball"]),
+    "funko": (["#funkoespaña", "#funkopopespaña", "#coleccionfunko"], ["#funkopopcollector"], ["#funkopop"]),
+    "psa": (["#gradeocartas", "#cartasgradeadas", "#psaespaña"], ["#psagrading", "#psa10"], ["#pokemontcg"]),
+    "varios": (["#tcgespaña", "#cartascoleccionables", "#lanzamientostcg"], ["#pokemonespaña", "#onepiececardgame"], ["#tcg"]),
 }
-PIE = ("\n\n👉 Todas las ofertas en cromeltcg.com (enlace en la bio)\n"
-       "🔔 Avisos al momento en Telegram: @cromeltcg")
+PIE = "\n\n👉 Todas las ofertas en cromeltcg.com (enlace en la bio)"
 
 
 def eur(c: int | None) -> str:
@@ -57,20 +63,17 @@ def eur(c: int | None) -> str:
     return s.replace(".", ",") + " €"
 
 
-def _hashtags(*grupos: str, n: int = 14) -> str:
-    vistas, out = set(), []
-    for g in ("base",) + grupos:
-        for h in HASHTAGS.get(g, []):
-            if h not in vistas:
-                vistas.add(h)
-                out.append(h)
-    return " ".join(out[:n])
+def _hashtags(tema: str = "varios") -> str:
+    """#cromeltcg y 4 mas del tema: 2 de nicho, 1 intermedio y 1 general."""
+    g = HASHTAGS.get(tema, HASHTAGS["varios"])
+    tags = random.sample(g[0], 2) + random.sample(g[1], 1) + random.sample(g[2], 1)
+    return " ".join(["#cromeltcg"] + tags)
 
 
 def _limpia_titulo(t: str) -> str:
     t = re.sub(r"\s+", " ", t or "").strip()
     t = re.sub(r"\s*[\(\[][^)\]]*(envio|envío|stock|oferta)[^)\]]*[\)\]]", "", t, flags=re.I)
-    return t[:110]
+    return t[:110].rstrip()
 
 
 def _img_carta(base: str | None, grande: bool = True) -> str | None:
@@ -117,6 +120,9 @@ def _chollos(filtro: dict, n: int, dias: float = 1.5, por_tienda: int = 2, orden
         clave = re.sub(r"\W+", "", (f["titulo"] or "").lower())[:40]
         if f["producto_id"] in usados or clave in vistos:
             continue
+        # Sin foto no hay ficha, y asi las cifras de la portada y del texto cuadran.
+        if not render._data_uri(f["imagen_url"]):
+            continue
         if cuenta.get(f["tienda_id"], 0) >= por_tienda:
             continue
         cuenta[f["tienda_id"]] = cuenta.get(f["tienda_id"], 0) + 1
@@ -140,7 +146,7 @@ def _diapo_producto(f: dict) -> dict:
 
 def _linea_producto(f: dict) -> str:
     extra = " (-%d%%)" % f["descuento_pct"] if f.get("descuento_pct") else ""
-    return "• %s — %s%s en %s" % (_limpia_titulo(f["titulo"])[:70], eur(f["precio_cents"]), extra, f["tienda"])
+    return "• %s: %s%s en %s" % (_limpia_titulo(f["titulo"])[:70].rstrip(), eur(f["precio_cents"]), extra, f["tienda"])
 
 
 def _post_productos(tipo: str, filas: list[dict], etiqueta: str, titulo_html: str, sub: str,
@@ -149,10 +155,12 @@ def _post_productos(tipo: str, filas: list[dict], etiqueta: str, titulo_html: st
     portada = {"tipo": "portada", "etiqueta": etiqueta, "titulo": titulo_html, "sub": sub,
                "imagenes": [f["imagen_url"] for f in filas[:3]]}
     diapos = [portada] + [_diapo_producto(f) for f in filas] + [{"tipo": "cta"}]
-    juegos = {f.get("juego") for f in filas if f.get("juego")}
+    # Las etiquetas, del juego que mas sale en el post.
+    juegos = [f.get("juego") for f in filas if f.get("juego") in HASHTAGS]
+    tema = tags[0] if tags else (max(set(juegos), key=juegos.count) if juegos else "varios")
     caption = (random.choice(intro) + "\n\n" + "\n".join(_linea_producto(f) for f in filas)
                + "\n\nPrecios vistos el %s; pueden cambiar en cualquier momento." % hoy.strftime("%d/%m a las %H:%M")
-               + PIE + "\n\n" + _hashtags(*sorted(juegos), "ofertas", *tags))
+               + PIE + "\n\n" + _hashtags(tema))
     return {"tipo": tipo, "diapositivas": diapos, "caption": caption,
             "usados": [f["producto_id"] for f in filas]}
 
@@ -166,7 +174,7 @@ def chollos() -> dict | None:
     if len(filas) < 3:
         return None
     return _post_productos(
-        "chollos", filas, "🔥 Chollos de hoy", "Lo mejor que ha cazado <em>el radar</em> hoy",
+        "chollos", filas, "🔥 Chollos de hoy", "%d chollos que ha cazado <em>hoy el radar</em>" % len(filas),
         "Ofertas y reposiciones de las tiendas de España. <b>Desliza →</b>",
         ["🔥 Los chollos TCG de hoy, cazados por el radar en las tiendas de España:",
          "🃏 Esto es lo mejor que ha salido hoy en las tiendas de cartas:",
@@ -178,7 +186,7 @@ def reposiciones() -> dict | None:
     if len(filas) < 3:
         return None
     return _post_productos(
-        "reposiciones", filas, "🔄 Reposiciones", "Ha vuelto el <em>stock</em>",
+        "reposiciones", filas, "🔄 Reposiciones", "%d productos que <em>vuelven a tener stock</em>" % len(filas),
         "Lo que han repuesto las tiendas estos días. <b>Vuela rápido.</b>",
         ["🔄 Vuelve el stock: esto es lo que han repuesto las tiendas estos días.",
          "⚡ Reposiciones recientes en tiendas de España (vuelan, ojo):"], ())
@@ -189,7 +197,7 @@ def funko() -> dict | None:
     if len(filas) < 3:
         return None
     return _post_productos(
-        "funko", filas, "🧸 Funko en oferta", "Funko Pop <em>rebajados</em>",
+        "funko", filas, "🧸 Funko en oferta", "%d Funko Pop <em>rebajados</em> esta semana" % len(filas),
         "Solo con un 15 % de descuento o más. <b>Desliza →</b>",
         ["🧸 Viernes de Funko: los Pop con mejor descuento que ha visto el radar esta semana.",
          "🧸 Funko Pop rebajados (15 % o más) en tiendas de España:"], ("funko",))
@@ -220,7 +228,7 @@ def suben() -> dict | None:
     filas = [f for f in filas if f["id"] not in usados][:6]
     if len(filas) < 3:
         return None
-    portada = {"tipo": "portada", "etiqueta": "📈 Precios de cartas", "titulo": "Las cartas que más <em>suben</em>",
+    portada = {"tipo": "portada", "etiqueta": "📈 Precios de cartas", "titulo": "%d cartas que han subido <em>esta semana</em>" % len(filas),
                "sub": "Precio de mercado ahora y hace una semana.", "imagenes": [_img_carta(f["imagen"]) for f in filas[:3]],
                "cartas": True}
     diapos = [portada] + [_diapo_carta(f, "▲ +%d%% · antes %s" % (f["sube_pct"], eur(f["antes_cents"]))) for f in filas]
@@ -253,7 +261,7 @@ def valiosas() -> dict | None:
                    "logo": _logo_coleccion(col.get("logo")), "cartas": True}
         diapos = [portada] + [_diapo_carta(c, "#%d de la colección" % (i + 1)) for i, c in enumerate(cartas)]
         caption = ("💎 ¿Te ha tocado alguna? Las cartas más caras de %s ahora mismo:\n\n" % col["nombre"]
-                   + "\n".join("%d. %s — %s" % (i + 1, c["nombre"], eur(c["precio_cents"])) for i, c in enumerate(cartas))
+                   + "\n".join("%d. %s: %s" % (i + 1, c["nombre"], eur(c["precio_cents"])) for i, c in enumerate(cartas))
                    + "\n\nLa colección entera, con el precio de cada carta, en la app."
                    + PIE + "\n\n" + _hashtags("pokemon"))
         return {"tipo": "valiosas", "diapositivas": diapos + [{"tipo": "cta"}], "caption": caption,
@@ -278,7 +286,7 @@ def lanzamientos() -> dict | None:
                + "\n".join("• %s%s (%s): %s" % (l["nombre"], " " + l["codigo"] if l.get("codigo") else "", l["juego"],
                                                  l["fecha_texto"]) for l in lista)
                + "\n\nEn la app puedes activar el aviso para cuando haya stock."
-               + PIE + "\n\n" + _hashtags("pokemon", "one_piece", "lorcana"))
+               + PIE + "\n\n" + _hashtags("varios"))
     return {"tipo": "lanzamientos", "diapositivas": diapos + [{"tipo": "cta"}], "caption": caption,
             "usados": ["lanz:" + l["id"] for l in lista]}
 
@@ -307,12 +315,28 @@ def resumen() -> dict | None:
     return post
 
 
-GENERADORES = {"chollos": chollos, "reposiciones": reposiciones, "funko": funko, "otros_juegos": otros_juegos,
+def app() -> dict:
+    """Publicidad de la app: la siguiente serie y gancho que no hayan salido en 60 dias."""
+    serie, g = app_promo.siguiente(_usados(60))
+    gancho = serie["ganchos"][g]
+    portada = {"tipo": "app_portada", "etiqueta": serie["etiqueta"], "titulo": gancho, "sub": serie["sub"],
+               "capturas": serie["portada"]}
+    pasos = [{"tipo": "paso", "captura": c, "titulo": t, "texto": x} for c, t, x in serie["pasos"]]
+    cierre = {"tipo": "cta", "titulo": serie["cierre"], "pide": serie["pide"]}
+    caption = (re.sub(r"</?em>", "", gancho) + "\n\n" + serie["texto"] + "\n\n" + serie["pide"] + "."
+               + "\n\n👉 Gratis en cromeltcg.com (enlace en la bio)\n\n" + _hashtags(serie["tags"]))
+    return {"tipo": "app", "diapositivas": [portada] + pasos + [cierre], "caption": caption,
+            "usados": ["app:%s:%d" % (serie["id"], g)]}
+
+
+GENERADORES = {"app": app, "chollos": chollos, "reposiciones": reposiciones, "funko": funko, "otros_juegos": otros_juegos,
                "suben": suben, "valiosas": valiosas, "lanzamientos": lanzamientos, "resumen": resumen}
 
 
-def tipo_del_hueco(indice: int, fecha: dt.date) -> str:
-    return "chollos" if indice == 0 else TARDE[fecha.weekday()]
+def tipo_del_hueco(indice: int, fecha: dt.date, total: int = 2) -> str:
+    if indice == 0:
+        return "chollos"
+    return TARDE[fecha.weekday()] if indice == total - 1 else "app"
 
 
 def genera(tipo: str) -> dict | None:
