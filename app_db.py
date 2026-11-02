@@ -280,9 +280,10 @@ AYUDA_MODERACION = """
 /ocultar 2 - ocultar el chollo del reporte 2 (no vuelve aunque se reponga)
 /mostrar 2 - volver a enseñarlo
 /resolver 2 - cerrar el reporte sin tocar nada
-/bloquear 2 - ocultar ese comentario y bloquear a su autor 7 dias"""
+/bloquear 2 - ocultar ese comentario y bloquear a su autor 7 dias
+/ig - Instagram: estado, cola y ajustes (/ig ayuda)"""
 
-COMANDOS = ("moderar", "ocultar", "mostrar", "resolver", "bloquear")
+COMANDOS = ("moderar", "ocultar", "mostrar", "resolver", "bloquear", "ig")
 
 
 def _reportes(estado: dict) -> list[dict]:
@@ -295,6 +296,9 @@ def _reportes(estado: dict) -> list[dict]:
 
 def comando(cmd: str, arg: str, estado: dict) -> str:
     esc = avisos.esc
+    if cmd == "ig":
+        from instagram import mando
+        return mando.comando(arg)
     if not activo():
         return "La app no esta conectada (faltan SUPABASE_URL y SUPABASE_SERVICE_KEY)."
     try:

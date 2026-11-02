@@ -203,7 +203,10 @@ AYUDA = """<b>Radar Pokemon</b>
 /ocultar 2 - ocultar el chollo o comentario del reporte 2
 /mostrar 2 - volver a ensenar ese chollo
 /resolver 2 - cerrar el reporte sin tocar nada
-/bloquear 2 - ocultar ese comentario y bloquear a su autor 7 dias"""
+/bloquear 2 - ocultar ese comentario y bloquear a su autor 7 dias
+
+<b>Instagram</b>
+/ig - estado del Instagram (/ig ayuda para todo lo demas)"""
 
 
 def leer_comandos(estado: dict, config: dict) -> list[str]:

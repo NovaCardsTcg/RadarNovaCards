@@ -1,0 +1,55 @@
+name: instagram
+
+# Publicador de Instagram de cromeltcg.com (ver instagram/README.md). Cada pasada
+# dura uno o dos minutos: mira TikTok, encola el post del hueco si toca y
+# publica lo pendiente. Las horas de los posts estan en Supabase (ig_ajustes),
+# no aqui: el cron solo despierta al publicador.
+on:
+  schedule:
+    - cron: '*/20 * * * *'
+  workflow_dispatch:
+    inputs:
+      ya:
+        description: 'Publicar ya un post de este tipo (vacio = pasada normal)'
+        required: false
+        default: ''
+        type: choice
+        options: ['', chollos, reposiciones, funko, otros_juegos, suben, valiosas, lanzamientos, resumen]
+
+concurrency:
+  group: instagram
+  cancel-in-progress: false
+
+jobs:
+  publicar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: instagram/requirements.txt
+
+      - run: pip install -r instagram/requirements.txt
+
+      # Chromium solo hace falta si toca dibujar un post; bajarlo cuesta ~30 s.
+      - name: Chromium
+        run: python -m playwright install --with-deps chromium
+
+      - name: Pasada
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          IG_TOKEN: ${{ secrets.IG_TOKEN }}
+          IG_USER_ID: ${{ secrets.IG_USER_ID }}
+        run: |
+          if [ -n "${{ inputs.ya }}" ]; then
+            python -m instagram.publicar --ya "${{ inputs.ya }}"
+          else
+            python -m instagram.publicar
+          fi

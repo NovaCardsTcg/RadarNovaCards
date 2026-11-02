@@ -1,0 +1,93 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <title>Cromel Caza TCG</title>
+  <!-- Abanico de tres dorsos de carta, uno por juego: Magic (izquierda),
+       Pokémon (centro, con la mira de "caza") y One Piece (derecha).
+       Dibujados a mano, estilizados: no son los dorsos oficiales. -->
+  <defs>
+    <radialGradient id="fondo" cx="50%" cy="42%" r="62%">
+      <stop offset="0" stop-color="#1eb5d3"/>
+      <stop offset=".45" stop-color="#0e3a52"/>
+      <stop offset="1" stop-color="#071827"/>
+    </radialGradient>
+    <linearGradient id="pokeAzul" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#3a78e8"/>
+      <stop offset="1" stop-color="#1b3f9e"/>
+    </linearGradient>
+    <radialGradient id="magicBrillo" cx="50%" cy="50%" r="55%">
+      <stop offset="0" stop-color="#f6c77a"/>
+      <stop offset=".7" stop-color="#b8692c"/>
+      <stop offset="1" stop-color="#6b3515"/>
+    </radialGradient>
+    <linearGradient id="opFondo" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1b2b4a"/>
+      <stop offset="1" stop-color="#0a1022"/>
+    </linearGradient>
+    <filter id="brillo" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="7" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="sombra" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="8" stdDeviation="9" flood-color="#000" flood-opacity=".5"/>
+    </filter>
+  </defs>
+
+  <circle cx="256" cy="256" r="240" fill="url(#fondo)"/>
+  <circle cx="256" cy="256" r="228" fill="none" stroke="#2eebe5" stroke-width="10" filter="url(#brillo)"/>
+  <circle cx="256" cy="256" r="212" fill="none" stroke="#9decf0" stroke-opacity=".55" stroke-width="3"/>
+
+  <g fill="#9decf0" opacity=".14">
+    <path d="M256 250 L120 90 L150 80 Z"/><path d="M256 250 L392 90 L362 80 Z"/>
+    <path d="M256 250 L60 230 L66 200 Z"/><path d="M256 250 L452 230 L446 200 Z"/>
+    <path d="M256 250 L250 40 L272 40 Z"/>
+  </g>
+  <g fill="#ffffff">
+    <path d="M118 150 l6 16 16 6 -16 6 -6 16 -6 -16 -16 -6 16 -6z"/>
+    <path d="M392 128 l4 11 11 4 -11 4 -4 11 -4 -11 -11 -4 11 -4z"/>
+    <path d="M410 330 l5 13 13 5 -13 5 -5 13 -5 -13 -13 -5 13 -5z" opacity=".85"/>
+    <circle cx="160" cy="356" r="3.5"/><circle cx="352" cy="190" r="3"/><circle cx="96" cy="262" r="2.5"/>
+  </g>
+
+  <g filter="url(#sombra)" transform="translate(256 258) scale(1.04) translate(-256 -226)">
+    <!-- MAGIC: marco marron, remolino cobre y los cinco colores de mana -->
+    <g transform="rotate(-33 256 430)">
+      <rect x="186" y="128" width="140" height="196" rx="14" fill="#2a170a" stroke="#d9a35c" stroke-width="5"/>
+      <rect x="196" y="138" width="120" height="176" rx="9" fill="#4a2a12"/>
+      <ellipse cx="256" cy="226" rx="44" ry="60" fill="#8a4a1e"/>
+      <ellipse cx="256" cy="226" rx="34" ry="48" fill="url(#magicBrillo)"/>
+      <path d="M236 262 C 220 230 242 196 266 192 C 250 208 246 228 260 246" fill="none" stroke="#fbe3b0" stroke-width="5" stroke-linecap="round" opacity=".85"/>
+      <g stroke="#2a170a" stroke-width="2">
+        <circle cx="256.0" cy="160.0" r="10" fill="#f8f4d6"/>
+        <circle cx="303.6" cy="205.6" r="10" fill="#3b82d6"/>
+        <circle cx="285.4" cy="279.4" r="10" fill="#2b2b2f"/>
+        <circle cx="226.6" cy="279.4" r="10" fill="#d6402d"/>
+        <circle cx="208.4" cy="205.6" r="10" fill="#2f9e5a"/>
+      </g>
+    </g>
+    <!-- ONE PIECE: fondo noche, sombrero de paja y calavera -->
+    <g transform="rotate(33 256 430)">
+      <rect x="186" y="128" width="140" height="196" rx="14" fill="url(#opFondo)" stroke="#e0b341" stroke-width="5"/>
+      <rect x="196" y="138" width="120" height="176" rx="9" fill="none" stroke="#e0b341" stroke-opacity=".5" stroke-width="2"/>
+      <circle cx="256" cy="238" r="26" fill="#f2efe6"/>
+      <rect x="244" y="256" width="24" height="16" rx="3" fill="#f2efe6"/>
+      <circle cx="246" cy="236" r="6" fill="#0a1022"/><circle cx="266" cy="236" r="6" fill="#0a1022"/>
+      <path d="M256 246 l-3 7 h6z" fill="#0a1022"/>
+      <path d="M222 284 L290 256 M290 284 L222 256" stroke="#f2efe6" stroke-width="6" stroke-linecap="round"/>
+      <ellipse cx="256" cy="204" rx="46" ry="12" fill="#e8bf4c"/>
+      <path d="M226 204 C 226 176 286 176 286 204 Z" fill="#f3d36b"/>
+      <path d="M227 199 C 232 190 280 190 285 199 L286 204 L226 204 Z" fill="#d6402d"/>
+    </g>
+    <!-- POKEMON: dorso azul con poke ball, y la mira de "caza" -->
+    <g>
+      <rect x="181" y="112" width="150" height="210" rx="15" fill="url(#pokeAzul)" stroke="#ffd447" stroke-width="6"/>
+      <rect x="194" y="125" width="124" height="184" rx="10" fill="none" stroke="#8fb6ff" stroke-opacity=".55" stroke-width="2.5"/>
+      <circle cx="256" cy="217" r="46" fill="#f4f6fb" stroke="#0d1740" stroke-width="5"/>
+      <path d="M210 217 A46 46 0 0 1 302 217 Z" fill="#e5352c"/>
+      <rect x="210" y="211" width="92" height="12" fill="#0d1740"/>
+      <circle cx="256" cy="217" r="14" fill="#f4f6fb" stroke="#0d1740" stroke-width="5"/>
+      <circle cx="256" cy="217" r="5" fill="#cfd8ea"/>
+      <g stroke="#2eebe5" stroke-width="5" stroke-linecap="round" filter="url(#brillo)">
+        <path d="M256 150 v18 M256 266 v18 M189 217 h18 M305 217 h18"/>
+      </g>
+    </g>
+  </g>
+</svg>
