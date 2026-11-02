@@ -8,6 +8,11 @@ tienen que ser JPEG.
 El token dura 60 dias. El primero lo pone Miquel como secreto IG_TOKEN en
 GitHub; a partir de ahi se guarda en la tabla ig_token y se renueva solo cada
 semana. Si Miquel cambia el secreto, manda el nuevo (se compara la huella).
+
+Tambien vale la via de Facebook Login (el Instagram conectado a una pagina), para
+cuentas a las que Meta no deja usar la otra: token que no empieza por "IG", host
+graph.facebook.com. El token de pagina que sale de uno de usuario de larga
+duracion no caduca, asi que esa via no renueva nada.
 """
 
 from __future__ import annotations
@@ -22,6 +27,7 @@ import requests
 from . import supa
 
 API = "https://graph.instagram.com"
+API_FACEBOOK = "https://graph.facebook.com"
 VERSION = "v23.0"
 MAX_CAPTION = 2200
 
@@ -37,8 +43,12 @@ def _ahora() -> dt.datetime:
     return dt.datetime.now(dt.timezone.utc)
 
 
+def _es_de_facebook(token: str) -> bool:
+    return not token.startswith("IG")
+
+
 def _pide(metodo: str, ruta: str, token: str, **datos) -> dict:
-    url = "%s/%s/%s" % (API, VERSION, ruta.lstrip("/"))
+    url = "%s/%s/%s" % (API_FACEBOOK if _es_de_facebook(token) else API, VERSION, ruta.lstrip("/"))
     datos["access_token"] = token
     if metodo == "GET":
         r = requests.get(url, params=datos, timeout=120)
@@ -74,6 +84,9 @@ def sesion() -> tuple[str, str]:
     else:
         raise ErrorIG("falta el token: pon el secreto IG_TOKEN en GitHub (ver instagram/README.md)")
 
+    if _es_de_facebook(token):
+        return _sesion_facebook(token, fila, huella)
+
     caduca = fila.get("caduca") if fila else None
     # Renovar exige que el token tenga mas de 24 h; se hace cada 7 dias.
     if fila is None or _ahora() - renovado > dt.timedelta(days=7):
@@ -92,6 +105,27 @@ def sesion() -> tuple[str, str]:
                              "huella_secreto": huella or (fila or {}).get("huella_secreto"),
                              "renovado": renovado.isoformat(), "caduca": caduca})
     _SESION.update(token=token, id=ig_id, usuario=yo.get("username"))
+    return token, ig_id
+
+
+def _sesion_facebook(token: str, fila: dict | None, huella: str | None) -> tuple[str, str]:
+    """Busca el Instagram conectado. Con un token de usuario, se queda con el de la pagina."""
+    campos = "instagram_business_account{id,username}"
+    try:
+        paginas = _pide("GET", "/me/accounts", token, fields="access_token," + campos).get("data") or []
+    except ErrorIG:
+        # Ya es un token de pagina: /me es la propia pagina y no tiene /accounts.
+        paginas = [dict(_pide("GET", "/me", token, fields=campos), access_token=token)]
+    conectada = next((p for p in paginas if p.get("instagram_business_account")), None)
+    if not conectada:
+        raise ErrorIG("ninguna pagina de Facebook de este token tiene un Instagram conectado")
+    cuenta = conectada["instagram_business_account"]
+    token = conectada.get("access_token") or token
+    ig_id = os.environ.get("IG_USER_ID", "").strip() or str(cuenta["id"])
+    supa.guarda("ig_token", {"id": 1, "token": token, "ig_user_id": ig_id, "usuario": cuenta.get("username"),
+                             "huella_secreto": huella or (fila or {}).get("huella_secreto"),
+                             "renovado": _ahora().isoformat(), "caduca": None})
+    _SESION.update(token=token, id=ig_id, usuario=cuenta.get("username"))
     return token, ig_id
 
 
