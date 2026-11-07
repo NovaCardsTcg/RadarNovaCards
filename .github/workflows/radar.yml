@@ -66,6 +66,9 @@ jobs:
                     "noticias_cada_h"):
               if k in m:
                   e[k] = m[k]
+          # Palabras: las de main se suman a las anadidas desde Telegram. Antes
+          # mandaba solo la rama estado y "funko" no llego a buscarse nunca.
+          e["palabras"] = list(dict.fromkeys(e.get("palabras", []) + m.get("palabras", [])))
           # Tiendas nuevas de main entran activadas; las que el usuario apago
           # desde Telegram se quedan como estan.
           for t, on in m.get("tiendas", {}).items():

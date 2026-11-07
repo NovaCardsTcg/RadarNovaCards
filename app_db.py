@@ -128,10 +128,27 @@ def juego_de(titulo: str, etiquetas: str = "") -> str | None:
     return None
 
 
+# En Amazon lo oficial empieza por la marca (ver prefijo_por_tienda en radar.py).
+PREFIJOS_AMAZON_APP = ["ravensburger", "disney lorcana", "lorcana", "magic the gathering", "magic", "wizards",
+                       "dragon ball", "bandai"]
+
+
+def palabras_busqueda(config: dict) -> list[str]:
+    """Lo que se busca en las tiendas: las palabras del canal y las de la app, sin repetir."""
+    return list(dict.fromkeys(list(config["palabras"]) + PALABRAS_APP + ["funko"]))
+
+
 def config_app(config: dict) -> dict:
     c = dict(config)
     c["palabras"] = list(config["palabras"]) + PALABRAS_APP
-    c["excluir"] = list(config["excluir"]) + ["caja de mazo", "ultimate guard", "deck holder", "playmat", "tapete"]
+    prefijos = dict(config.get("prefijo_por_tienda") or {})
+    if prefijos.get("amazon"):
+        prefijos["amazon"] = list(prefijos["amazon"]) + PREFIJOS_AMAZON_APP
+    c["prefijo_por_tienda"] = prefijos
+    # "ravensburger" se excluye en el canal por los puzles de Pokemon; aqui hace
+    # falta porque es quien edita Lorcana (y un puzle no pasa el filtro tematico).
+    c["excluir"] = [x for x in config["excluir"] if x != "ravensburger"] + [
+        "caja de mazo", "ultimate guard", "deck holder", "playmat", "tapete"]
     return c
 
 

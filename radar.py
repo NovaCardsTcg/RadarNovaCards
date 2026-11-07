@@ -838,7 +838,11 @@ def main() -> int:
                     i = estado.get("amazon_rotacion", 0) % len(dirigidas)
                     extra["dirigidas"] = (dirigidas[i:] + dirigidas[:i])[:n]
                     estado["amazon_rotacion"] = i + n
-            productos = fn(config["palabras"], **extra)
+            # La busqueda lleva tambien los juegos de la app (Lorcana, Magic...):
+            # antes solo entraban de rebote. Amazon no: alli cada palabra son dos
+            # paginas mas y salta el muro; sus otros juegos van en amazon_busquedas.
+            palabras = config["palabras"] if tienda == "amazon" else app_db.palabras_busqueda(config)
+            productos = fn(palabras, **extra)
             # La app ve el catalogo entero (accesorios, gradeadas...); el
             # canal, solo lo que pasa el filtro. Sin claves de Supabase, nada.
             app_db.sincroniza(tienda, productos, config, relevante, destacado)
