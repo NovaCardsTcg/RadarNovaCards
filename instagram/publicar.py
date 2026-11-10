@@ -211,7 +211,21 @@ NOMBRES = {"reel": "Reel de la app", "saber": "Guía útil", "frase": "Frase", "
            "lanzamientos": "Lanzamientos", "resumen": "Resumen semanal", "tiktok": "TikTok → Reel"}
 
 
+def caduca_viejos() -> int:
+    """Un post automatico que no salio a su hora ya no vale: sus chollos y su
+    cuenta atras son de otro dia. Sin esto, tras unos dias sin token saldria
+    toda la cola de golpe. Los TikToks si esperan: son tuyos y no caducan."""
+    limite = (_ahora() - VENTANA_HUECO).isoformat()
+    viejos = supa.cambia("ig_publicaciones", {"estado": "eq.pendiente", "tipo": "neq.tiktok",
+                                              "publicar_desde": "lt." + limite},
+                         {"estado": "descartado", "error": "caducado: no salio a su hora"})
+    return len(viejos)
+
+
 def procesa_cola() -> int:
+    n = caduca_viejos()
+    if n:
+        print("[ig] %d posts automaticos caducados (no salieron a su hora)" % n)
     filas = supa.lee("ig_publicaciones", select="*", estado="eq.pendiente",
                      publicar_desde="lte." + _ahora().isoformat(), order="publicar_desde", limit=str(MAX_POR_PASADA))
     if not filas:
