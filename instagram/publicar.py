@@ -56,6 +56,13 @@ def telegram(texto: str) -> None:
         print("[telegram] no enviado: %s" % e)
 
 
+def aviso(texto: str, nivel: str = "warning") -> None:
+    """Linea que GitHub ensena como anotacion, visible sin iniciar sesion: asi se
+    puede diagnosticar desde fuera. Nunca lleva el token (Meta no lo repite en sus errores)."""
+    print("::%s title=instagram::%s" % (nivel, str(texto).replace("
+", " ")[:900]))
+
+
 def esc(s) -> str:
     return html.escape(str(s or ""), quote=False)
 
@@ -214,7 +221,7 @@ def procesa_cola() -> int:
         cuota = ig.cuota_restante()
     except ig.ErrorIG as e:
         # La cola sigue intacta: sale en cuanto el token funcione. Se avisa una vez al dia.
-        print("[ig] no puedo conectar con Instagram: %s" % e)
+        aviso("no puedo conectar con Instagram: %s" % e)
         nota = supa.inserta("ig_publicaciones", [{"tipo": "nota", "origen_id": "nota:token:" + dt.date.today().isoformat(),
                                                   "estado": "descartado", "error": str(e)[:300]}], "origen_id")
         if nota:
@@ -241,7 +248,7 @@ def procesa_cola() -> int:
                 supa.cambia("ig_publicaciones", {"id": "eq.%d" % f["id"]}, {
                     "estado": "error" if final else "pendiente", "intentos": n, "error": str(e)[:500],
                     "publicar_desde": (_ahora() + dt.timedelta(minutes=30)).isoformat()})
-                print("[ig] %d fallo (%d/%d): %s" % (f["id"], n, INTENTOS, e))
+                aviso("%d fallo (%d/%d): %s" % (f["id"], n, INTENTOS, e))
                 if final:
                     telegram("❌ No he podido publicar en Instagram (%s, n.º %d):\n<code>%s</code>"
                              % (NOMBRES.get(f["tipo"], f["tipo"]), f["id"], esc(str(e)[:300])))
@@ -302,19 +309,28 @@ def main(argv: list[str]) -> int:
         aj = ajustes()
         token = os.environ.get("IG_TOKEN") or supa.lee("ig_token", select="id", id="eq.1")
     except requests.HTTPError as e:
-        print("falta la migracion 13 en Supabase (%s): no hago nada" % e)
+        aviso("falta la migracion 13 en Supabase (%s): no hago nada" % e)
         return 0
     if not token:
-        print("falta el secreto IG_TOKEN: no hago nada (ver instagram/README.md)")
+        aviso("falta el secreto IG_TOKEN: no hago nada (ver instagram/README.md)")
         return 0
     if not aj.get("activo", True):
-        print("publicador en pausa (/ig on para reanudar)")
+        aviso("publicador en pausa (/ig on para reanudar)")
         return 0
     mira_tiktok(aj)
     programa_huecos(aj)
     n = procesa_cola()
     limpia()
-    print("pasada terminada: %d publicadas" % n)
+    try:
+        filas = supa.lee("ig_publicaciones", select="estado,tipo,error,creado", order="id.desc", limit="200")
+        cuenta = {}
+        for f in filas:
+            cuenta[f["estado"]] = cuenta.get(f["estado"], 0) + 1
+        ultimo = next((f for f in filas if f.get("error") and f["tipo"] != "nota"), None)
+        aviso("pasada: %d publicadas | cola %s | horas %s | ultimo error: %s" % (
+            n, cuenta, aj.get("horas"), (ultimo or {}).get("error", "ninguno")[:300]), "notice")
+    except requests.HTTPError:
+        print("pasada terminada: %d publicadas" % n)
     return 0
 
 
