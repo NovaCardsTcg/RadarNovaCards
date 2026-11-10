@@ -59,8 +59,7 @@ def telegram(texto: str) -> None:
 def aviso(texto: str, nivel: str = "warning") -> None:
     """Linea que GitHub ensena como anotacion, visible sin iniciar sesion: asi se
     puede diagnosticar desde fuera. Nunca lleva el token (Meta no lo repite en sus errores)."""
-    print("::%s title=instagram::%s" % (nivel, str(texto).replace("
-", " ")[:900]))
+    print("::%s title=instagram::%s" % (nivel, " ".join(str(texto).split())[:900]))
 
 
 def esc(s) -> str:
